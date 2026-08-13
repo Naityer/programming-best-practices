@@ -1,0 +1,12 @@
+{
+  "cases": [
+    {"name": "jvm-maven", "files": {"pom.xml": "<project/>", "src/Main.java": "class Main {}"}, "ecosystem": "jvm", "language": "java"},
+    {"name": "python", "files": {"pyproject.toml": "[tool.pytest.ini_options]\n", "src/app.py": "x = 1\n"}, "ecosystem": "python", "language": "python"},
+    {"name": "typescript-pnpm", "files": {"package.json": "{\"scripts\":{\"test\":\"vitest\"},\"devDependencies\":{\"vitest\":\"1\"}}", "pnpm-lock.yaml": "", "src/app.ts": "export const x = 1;"}, "ecosystem": "javascript-typescript", "language": "typescript"},
+    {"name": "dotnet", "files": {"App.csproj": "<Project/>", "Program.cs": "class Program {}"}, "ecosystem": "dotnet", "language": "csharp"},
+    {"name": "go", "files": {"go.mod": "module example.test\n", "main.go": "package main\n"}, "ecosystem": "go", "language": "go"},
+    {"name": "rust", "files": {"Cargo.toml": "[package]\nname='x'\nversion='0.1.0'\n", "src/lib.rs": "pub fn x() {}"}, "ecosystem": "rust", "language": "rust"},
+    {"name": "cpp-cmake", "files": {"CMakeLists.txt": "cmake_minimum_required(VERSION 3.20)", "src/main.cpp": "int main() { return 0; }"}, "ecosystem": "c-cpp", "language": "c-cpp"}
+  ]
+}
+

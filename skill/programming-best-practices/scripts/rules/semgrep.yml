@@ -1,0 +1,67 @@
+rules:
+  - id: pbp.python.subprocess-shell-true
+    languages: [python]
+    severity: WARNING
+    message: Avoid shell=True with subprocess; pass an argument list and validate untrusted values.
+    metadata:
+      category: security
+      confidence: MEDIUM
+      impact: Shell invocation can enable command injection when command data is externally controlled.
+      fix: Trace command data; replace the shell string with an argument list, or document why a constant trusted command requires a shell.
+      technology: [python]
+    patterns:
+      - pattern: subprocess.$FUNC(..., shell=True, ...)
+
+  - id: pbp.python.requests-without-timeout
+    languages: [python]
+    severity: WARNING
+    message: Set an explicit timeout for outbound HTTP requests.
+    metadata:
+      category: security
+      confidence: MEDIUM
+      impact: An outbound call without a deadline can exhaust workers or hang request processing.
+      fix: Set an explicit connect/read timeout appropriate to the operation.
+      technology: [python]
+    patterns:
+      - pattern: requests.$METHOD(...)
+      - pattern-not: requests.$METHOD(..., timeout=$TIMEOUT, ...)
+      - metavariable-regex:
+          metavariable: $METHOD
+          regex: ^(get|post|put|patch|delete|head|options|request)$
+
+  - id: pbp.python.generic-exception-swallowed
+    languages: [python]
+    severity: WARNING
+    message: A broad exception is swallowed without preserving diagnostic context.
+    metadata:
+      category: maintainability
+      confidence: MEDIUM
+      impact: Distinct operational and programming failures become indistinguishable and lose diagnostic context.
+      fix: Catch only expected exceptions at the appropriate boundary and preserve actionable error context.
+      technology: [python]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              try:
+                ...
+              except Exception:
+                pass
+          - pattern: |
+              try:
+                ...
+              except Exception:
+                return None
+
+  - id: pbp.javascript.child-process-exec
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: child_process.exec invokes a shell; avoid passing untrusted or constructed commands.
+    metadata:
+      category: security
+      confidence: MEDIUM
+      impact: Shell execution can enable command injection when command data is externally controlled.
+      fix: Prefer execFile/spawn with an argument list and validate any externally controlled values.
+      technology: [javascript, typescript]
+    pattern-either:
+      - pattern: child_process.exec(...)
+      - pattern: $CP.exec(...)

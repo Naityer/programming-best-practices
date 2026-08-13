@@ -1,0 +1,73 @@
+{
+  "audit": {
+    "generated_at": "2026-08-13T12:00:00Z",
+    "mode": "audit",
+    "outcome": "informational",
+    "profile": "standard",
+    "repository": "golden-sample",
+    "scope": "src/app.py"
+  },
+  "findings": [
+    {
+      "category": "test-quality",
+      "confidence": "high",
+      "evidence": [
+        {
+          "message": "Age 65 is included in the discount rule.",
+          "source": "requirements.md",
+          "source_type": "specification"
+        }
+      ],
+      "fingerprint": "golden-fingerprint",
+      "id": "F-001",
+      "impact": "A comparison mutation can change behavior at the eligibility boundary.",
+      "locations": [
+        {
+          "file": "src/app.py",
+          "line": 10
+        }
+      ],
+      "oracle": {
+        "rule": "Customers aged 65 or more receive the discount.",
+        "source": "requirements.md",
+        "type": "specification"
+      },
+      "recommendation": "Add specification-backed tests for ages 64 and 65.",
+      "rule_id": "testing.boundary",
+      "severity": "medium",
+      "title": "Boundary behavior is not asserted"
+    }
+  ],
+  "limitations": [
+    "Mutation testing was unavailable."
+  ],
+  "schema_version": "1.0.0",
+  "summary": {
+    "dimensions": {
+      "coverage": {
+        "branch": 72
+      }
+    },
+    "finding_counts": {
+      "blocker": 0,
+      "high": 0,
+      "low": 0,
+      "medium": 1
+    }
+  },
+  "tools": [
+    {
+      "name": "mutmut",
+      "reason": "not installed",
+      "status": "unavailable"
+    },
+    {
+      "command": "python -m pytest",
+      "duration_ms": 25,
+      "exit_code": 0,
+      "name": "pytest",
+      "status": "passed",
+      "version": "8.0"
+    }
+  ]
+}

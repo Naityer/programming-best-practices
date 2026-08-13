@@ -1,0 +1,36 @@
+{
+  "skill": "programming-best-practices",
+  "cases": [
+    {
+      "name": "audit-default-read-only",
+      "prompt": "Audita la calidad de este repositorio.",
+      "expected": ["audit mode", "standard profile", "no source edits", "Markdown JSON SARIF"]
+    },
+    {
+      "name": "authorized-refactor",
+      "prompt": "Refactoriza este servicio para reducir el acoplamiento y añade tests.",
+      "expected": ["fix mode", "minimal diff", "behavior tests", "final diff review"]
+    },
+    {
+      "name": "security-blocker",
+      "prompt": "Revisa este endpoint de administración y sus permisos.",
+      "expected": ["authorization boundary", "evidence", "severity and confidence separated", "secret redaction"]
+    },
+    {
+      "name": "weak-tests",
+      "prompt": "La cobertura es alta pero sospecho que los tests son débiles; haz una auditoría profunda.",
+      "expected": ["deep profile", "branch coverage", "mutation testing", "no universal threshold"]
+    },
+    {
+      "name": "missing-tool",
+      "prompt": "Ejecuta Semgrep, pero no está instalado.",
+      "expected": ["unavailable status", "official instructions verification", "approval before installation"]
+    },
+    {
+      "name": "negative-trigger",
+      "prompt": "Explícame qué es una lista enlazada.",
+      "expected": ["skill should not trigger"]
+    }
+  ]
+}
+

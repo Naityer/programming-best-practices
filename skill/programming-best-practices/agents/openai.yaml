@@ -1,0 +1,4 @@
+interface:
+  display_name: "Programming Best Practices"
+  short_description: "Audita y mejora la calidad del código"
+  default_prompt: "Usa $programming-best-practices para auditar la calidad, los tests y la seguridad de este repositorio."
