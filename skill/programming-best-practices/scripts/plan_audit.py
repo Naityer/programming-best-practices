@@ -121,6 +121,21 @@ def _python_checks(root: Path, inv: dict[str, Any], profile: str) -> list[dict[s
                              ecosystem="python", minimum_profile="deep", output_format="mutmut",
                              workspace_effects="runtime", timeout=3600,
                              reason="mutmut is unavailable."))
+        # `pytest-benchmark` es un plugin, no un ejecutable: `shutil.which` no lo
+        # ve, así que la señal es que exista un directorio de benchmarks. Sin él,
+        # `--benchmark-only` no seleccionaría nada y el check seria ruido.
+        has_benchmarks = any(
+            Path(item).name in {"benchmarks", "bench"} for item in _top_level_entries(root)
+        )
+        bench_argv = (
+            [py, "-B", "-m", "pytest", "--benchmark-only", "-q", "-p", "no:cacheprovider",
+             "--benchmark-json={artifact}/benchmark.json"]
+            if py and has_benchmarks else None
+        )
+        checks.append(_check("python.benchmark", "pytest-benchmark", "performance", bench_argv,
+                             ecosystem="python", minimum_profile="deep", output_format="pytest-benchmark",
+                             workspace_effects="runtime", timeout=1800,
+                             reason="No benchmarks/ directory or Python runtime is unavailable."))
     return checks
 
 
@@ -144,12 +159,54 @@ def _javascript_checks(root: Path, inv: dict[str, Any], profile: str) -> list[di
         checks.append(_check(f"js.{name}", manager, category, argv, ecosystem="javascript-typescript",
                              required=required and bool(config), workspace_effects="cache" if name != "test" else "runtime",
                              timeout=1200, cwd=project_dir, reason=f"Package script '{name}' or {manager} is unavailable."))
+    if PROFILE_RANK[profile] >= 2:
+        # Tamaño de lo que se entrega al navegador. Dos pasos porque el reparto
+        # de responsabilidades del plan lo exige: construir MUTA el árbol de
+        # salida (`workspace_effects="cache"`, así que exige
+        # `--allow-project-writes`), mientras que medir solo lee.
+        build_argv = [*run, "build"] if run and "build" in scripts else None
+        checks.append(_check("js.build", manager, "performance", build_argv,
+                             ecosystem="javascript-typescript", minimum_profile="standard",
+                             workspace_effects="cache", timeout=1800, cwd=project_dir,
+                             reason=f"Package script 'build' or {manager} is unavailable."))
+        python = _tool(inv, "python-runtime") or _tool(inv, "python")
+        measure = str(Path(__file__).resolve().parent / "measure_artifacts.py")
+        out_dir = _build_output_dir(root, project_dir)
+        measure_argv = (
+            [python, measure, "--root", str(root), "--dir", out_dir, "--output", "{artifact}/bundle-size.json"]
+            if python and build_argv and out_dir else None
+        )
+        checks.append(_check("js.bundle-size", "bundle-size", "performance", measure_argv,
+                             ecosystem="javascript-typescript", minimum_profile="standard",
+                             output_format="bundle-size", workspace_effects="none", timeout=120,
+                             depends_on=["js.build"], cwd=project_dir,
+                             reason="No build script, Python runtime, or known output directory."))
     if PROFILE_RANK[profile] >= 3:
         stryker = _tool(inv, "stryker")
         checks.append(_check("js.mutation", "stryker", "test-strength", [stryker, "run"] if stryker else None,
                              ecosystem="javascript-typescript", minimum_profile="deep", output_format="stryker",
                              workspace_effects="runtime", timeout=3600, cwd=project_dir, reason="StrykerJS is unavailable."))
+        bench_argv = [*run, "bench"] if run and "bench" in scripts else None
+        checks.append(_check("js.benchmark", manager, "performance", bench_argv,
+                             ecosystem="javascript-typescript", minimum_profile="deep",
+                             workspace_effects="runtime", timeout=1800, cwd=project_dir,
+                             reason="No 'bench' package script."))
     return checks
+
+
+# Convención de cada empaquetador. Se comprueba cuál existe de verdad en vez de
+# suponer: medir un directorio equivocado daría un cero silencioso.
+_BUILD_OUTPUT_DIRS = ("dist", "build", "out", ".output/public", ".next", "public/build")
+
+
+def _build_output_dir(root: Path, project_dir: str) -> str | None:
+    """Directorio de salida ya existente, relativo a `root`, o `None`."""
+    base = (root / project_dir) if project_dir != "." else root
+    for candidate in _BUILD_OUTPUT_DIRS:
+        path = base / candidate
+        if path.is_dir():
+            return path.relative_to(root).as_posix()
+    return None
 
 
 def _simple_ecosystem_checks(inv: dict[str, Any], profile: str, name: str) -> list[dict[str, Any]]:

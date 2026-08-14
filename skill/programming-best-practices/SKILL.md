@@ -1,6 +1,6 @@
 ---
 name: programming-best-practices
-description: Audit and improve software correctness, maintainability, readability, test quality, architecture, dependencies, and security using repository-native conventions and instrumented evidence. Use for code-quality audits, code reviews, refactoring requests, best-practice checks, test generation or evaluation, coverage and mutation analysis, security review, static-analysis orchestration, and requests to fix quality findings across Java/JVM, Python, JavaScript/TypeScript, .NET, Go, Rust, or C/C++ repositories.
+description: Audit and improve software correctness, maintainability, readability, test quality, architecture, dependencies, security, and performance using repository-native conventions and instrumented evidence. Use for code-quality audits, code reviews, refactoring requests, best-practice checks, test generation or evaluation, coverage and mutation analysis, security review, performance audits and optimization work (profiling, benchmarking, bundle size, regression against a recorded baseline), static-analysis orchestration, and requests to fix quality findings across Java/JVM, Python, JavaScript/TypeScript, .NET, Go, Rust, or C/C++ repositories.
 ---
 
 # Programming Best Practices
@@ -41,6 +41,7 @@ Use instrumented evidence before heuristic opinion. Treat unavailable, skipped, 
 - Read [code-quality.md](references/code-quality.md) when assessing smells, refactorings, coupling, cohesion, or design patterns.
 - Read [testing.md](references/testing.md) for test levels, coverage, mutation testing, test generation, and oracle classification.
 - Read [security.md](references/security.md) for untrusted input, authorization, secrets, dependencies, logging, files, URLs, concurrency, or sensitive data.
+- Read [performance.md](references/performance.md) when the request is about speed, latency, memory, bundle size, profiling, benchmarking, or a performance regression.
 - Read [profiles.md](references/profiles.md) before choosing checks or interpreting partial execution.
 - Read [automation.md](references/automation.md) before planning, executing, normalizing, installing tools, or generating tests.
 - Read [tooling-matrix.md](references/tooling-matrix.md) for stack-specific commands and optional analyzers.
@@ -54,6 +55,7 @@ Use instrumented evidence before heuristic opinion. Treat unavailable, skipped, 
 - Deduplicate tool findings that share a root cause. Retain the strongest evidence and list corroborating sources.
 - Treat a hardcoded credential, exploitable authorization bypass, likely data corruption, severe race, or accidental breaking API as a blocker when supported by evidence.
 - Treat coverage as a signal. Respect repository gates; without configured gates, report uncovered risk rather than failing arbitrary percentages.
+- Treat performance the same way: compare against the repository's recorded baseline, never an invented budget. Without a baseline, report the measurements and state that no verdict is possible.
 - Do not recommend a pattern, interface, factory, abstraction, or rewrite without a concrete recurring problem it simplifies.
 - In audit mode, end with findings ordered by severity, then open questions/limitations, validation performed, and artifact paths.
 - When no findings remain, state what was checked and what could not be checked. Never claim the codebase is fully safe or correct.

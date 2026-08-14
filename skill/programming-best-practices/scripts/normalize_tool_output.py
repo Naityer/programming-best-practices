@@ -354,6 +354,44 @@ def parse_stryker(data: Any, root: Path | None) -> tuple[list[dict[str, Any]], d
     return findings, {"mutation": {"tool": "stryker", "killed": killed, "survived": survived, "total": total, "score_percent": score}}, []
 
 
+def parse_bundle_size(data: Any, root: Path | None) -> tuple[list[dict[str, Any]], dict[str, Any], list[str]]:
+    """Salida de `measure_artifacts.py`.
+
+    No produce hallazgos: un tamaño no es un defecto sin algo con lo que
+    compararlo, y fabricar un presupuesto aquí sería justo el umbral inventado
+    que `SKILL.md` prohíbe. Se registra como dimensión para que
+    `compare_perf_baseline.py` pueda contrastarlo con la línea base del propio
+    repositorio.
+    """
+    dimensions = {
+        "performance": {
+            "bundle": {
+                "root": data.get("root"),
+                "total_bytes": data.get("total_bytes"),
+                "file_count": data.get("file_count"),
+                "by_extension": data.get("by_extension", {}),
+                "largest": data.get("largest", [])[:10],
+            }
+        }
+    }
+    return [], dimensions, []
+
+
+def parse_pytest_benchmark(data: Any, root: Path | None) -> tuple[list[dict[str, Any]], dict[str, Any], list[str]]:
+    """Salida de `pytest --benchmark-json`. Igual que arriba: mide, no juzga."""
+    benchmarks = {}
+    for item in data.get("benchmarks", []) or []:
+        stats = item.get("stats", {}) or {}
+        benchmarks[item.get("fullname") or item.get("name") or "?"] = {
+            "mean_seconds": stats.get("mean"),
+            "median_seconds": stats.get("median"),
+            "stddev_seconds": stats.get("stddev"),
+            "rounds": stats.get("rounds"),
+            "ops_per_second": stats.get("ops"),
+        }
+    return [], {"performance": {"benchmarks": benchmarks}}, []
+
+
 JSON_PARSERS: dict[str, Callable[[Any, Path | None], tuple[list[dict[str, Any]], dict[str, Any], list[str]]]] = {
     "semgrep": parse_semgrep,
     "gitleaks": parse_gitleaks,
@@ -364,6 +402,8 @@ JSON_PARSERS: dict[str, Callable[[Any, Path | None], tuple[list[dict[str, Any]],
     "llvm-cov": parse_llvm_cov,
     "cargo-mutants": parse_cargo_mutants,
     "stryker": parse_stryker,
+    "bundle-size": parse_bundle_size,
+    "pytest-benchmark": parse_pytest_benchmark,
 }
 
 

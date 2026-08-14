@@ -25,6 +25,7 @@ class ContractTests(unittest.TestCase):
         expected = {
             "core-principles.md", "code-quality.md", "testing.md", "security.md", "automation.md",
             "profiles.md", "tooling-matrix.md", "reporting.md", "audit-result.schema.json",
+            "performance.md",
         }
         self.assertEqual(expected, {path.name for path in (SKILL / "references").iterdir()})
         for name in expected:
