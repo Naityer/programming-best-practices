@@ -107,6 +107,43 @@ class ProjectVirtualenvTests(unittest.TestCase):
                 f"deberia usar el venv del proyecto, no {command}",
             )
 
+    def test_project_tools_win_over_a_different_project_on_path(self) -> None:
+        """El caso que de verdad hace dano: auditar con las herramientas de OTRO repo."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "pyproject.toml").write_text("[project]\nname='x'\n", encoding="utf-8")
+            (root / "app.py").write_text("value = 1\n", encoding="utf-8")
+            scripts_dir = root / ".venv" / "Scripts"
+            scripts_dir.mkdir(parents=True)
+            bin_dir = root / ".venv" / "bin"
+            bin_dir.mkdir(parents=True)
+            for name in ("ruff", "mypy", "coverage", "pytest"):
+                (scripts_dir / f"{name}.exe").write_text("", encoding="utf-8")
+                (bin_dir / name).write_text("", encoding="utf-8")
+
+            inventory = detect_project.detect(root)
+            for name in ("ruff", "mypy", "coverage", "pytest"):
+                entry = inventory["tools"][name]
+                self.assertEqual(entry["status"], "available", name)
+                self.assertTrue(
+                    Path(entry["command"]).is_relative_to(root),
+                    f"{name} deberia salir del proyecto, no de {entry['command']}",
+                )
+
+    def test_node_tools_are_taken_from_node_modules(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "package.json").write_text('{"scripts":{}}', encoding="utf-8")
+            (root / "index.js").write_text("x=1\n", encoding="utf-8")
+            node_bin = root / "node_modules" / ".bin"
+            node_bin.mkdir(parents=True)
+            (node_bin / "eslint.cmd").write_text("", encoding="utf-8")
+            (node_bin / "eslint").write_text("", encoding="utf-8")
+
+            entry = detect_project.detect(root)["tools"]["eslint"]
+            self.assertEqual(entry["status"], "available")
+            self.assertTrue(Path(entry["command"]).is_relative_to(root))
+
     def test_without_a_project_virtualenv_it_falls_back_to_path(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -114,42 +114,66 @@ def _git_info(root: Path) -> dict[str, Any]:
     }
 
 
-# Entornos virtuales de Python del propio proyecto, en orden de preferencia.
-# Mismo criterio que ya se aplica a `mvnw`/`gradlew`: si el repositorio trae su
-# herramienta, esa manda sobre la global.
-_VENV_PYTHONS = (
-    Path(".venv") / "Scripts" / "python.exe",   # Windows
-    Path(".venv") / "bin" / "python",           # POSIX
-    Path("venv") / "Scripts" / "python.exe",
-    Path("venv") / "bin" / "python",
-    Path("env") / "Scripts" / "python.exe",
-    Path("env") / "bin" / "python",
-)
+# Directorios donde un proyecto guarda SUS herramientas, por convención de cada
+# ecosistema: el entorno virtual en Python, `node_modules/.bin` en Node.
+#
+# Es el mismo criterio que ya se aplicaba a `mvnw`/`gradlew`, extendido a los
+# dos ecosistemas donde instalar las herramientas *dentro* del proyecto es la
+# práctica normal y no la excepción. Sin esto la resolución cae en `shutil.which`
+# y pasan dos cosas, ambas comprobadas en un caso real:
+#
+#   - Herramientas instaladas en el venv del proyecto se reportan como
+#     `unavailable`, así que la auditoría no las ejecuta y no mide nada.
+#   - Peor: se encuentra la herramienta de OTRO proyecto que casualmente está
+#     en el PATH, y se audita con la versión y la configuración equivocadas.
+#
+# `python` merece además una nota aparte: con el intérprete equivocado, `pytest`
+# no encuentra el paquete que está auditando y muere con `ModuleNotFoundError`.
+# Eso se reportaría como "los tests fallan" cuando en realidad no llegaron a
+# arrancar — un falso positivo que acusa al repositorio de un defecto que no tiene.
+_VENV_DIRS = (".venv", "venv", "env", "virtualenv")
+_VENV_BIN_DIRS = ("Scripts", "bin")          # Windows, POSIX
+_EXECUTABLE_SUFFIXES = ("", ".exe", ".cmd", ".bat")
+
+# Herramientas que se instalan dentro del proyecto, por ecosistema.
+_PYTHON_TOOLS = frozenset({
+    "python", "python3", "pytest", "ruff", "mypy", "pyright",
+    "coverage", "mutmut", "pynguin", "hypothesis",
+})
+_NODE_TOOLS = frozenset({"eslint", "stryker", "tsc", "vitest", "jest", "prettier"})
 
 
-def _project_python(root: Path) -> Path | None:
-    """Intérprete del entorno virtual del repositorio, si lo hay.
+def _project_tool_dirs(root: Path) -> list[Path]:
+    """Directorios de herramientas propias del repositorio, si existen."""
+    found: list[Path] = []
+    for venv in _VENV_DIRS:
+        for bin_dir in _VENV_BIN_DIRS:
+            candidate = root / venv / bin_dir
+            if candidate.is_dir():
+                found.append(candidate)
+    node_bin = root / "node_modules" / ".bin"
+    if node_bin.is_dir():
+        found.append(node_bin)
+    return found
 
-    Sin esto se resolvía `python` por PATH, que es el intérprete que resulte
-    estar activo — a menudo el de OTRO proyecto. Los tests entonces fallan con
-    `ModuleNotFoundError` sobre el propio paquete que se está auditando, y eso se
-    reporta como "los tests fallan" cuando en realidad no llegaron a correr.
-    Un falso positivo así es peor que no medir: acusa al repositorio de un
-    defecto que no tiene.
-    """
-    for relative in _VENV_PYTHONS:
-        candidate = root / relative
-        if candidate.is_file():
-            return candidate.resolve()
+
+def _find_in_project(name: str, root: Path) -> str | None:
+    if name not in _PYTHON_TOOLS and name not in _NODE_TOOLS:
+        return None
+    for directory in _project_tool_dirs(root):
+        for suffix in _EXECUTABLE_SUFFIXES:
+            candidate = directory / f"{name}{suffix}"
+            if candidate.is_file():
+                return str(candidate.resolve())
     return None
 
 
 def _find_tool(candidates: list[str], root: Path) -> dict[str, Any]:
-    # El intérprete del proyecto gana a cualquier `python` del PATH.
-    if candidates and candidates[0] in {"python3", "python"}:
-        venv_python = _project_python(root)
-        if venv_python:
-            return {"status": "available", "command": str(venv_python)}
+    # Lo que el repositorio trae consigo gana a cualquier cosa del PATH.
+    for candidate in candidates:
+        local_tool = _find_in_project(candidate, root)
+        if local_tool:
+            return {"status": "available", "command": local_tool}
     for candidate in candidates:
         local = root / candidate
         if local.is_file():
