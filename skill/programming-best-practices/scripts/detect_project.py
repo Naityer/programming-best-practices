@@ -114,7 +114,42 @@ def _git_info(root: Path) -> dict[str, Any]:
     }
 
 
+# Entornos virtuales de Python del propio proyecto, en orden de preferencia.
+# Mismo criterio que ya se aplica a `mvnw`/`gradlew`: si el repositorio trae su
+# herramienta, esa manda sobre la global.
+_VENV_PYTHONS = (
+    Path(".venv") / "Scripts" / "python.exe",   # Windows
+    Path(".venv") / "bin" / "python",           # POSIX
+    Path("venv") / "Scripts" / "python.exe",
+    Path("venv") / "bin" / "python",
+    Path("env") / "Scripts" / "python.exe",
+    Path("env") / "bin" / "python",
+)
+
+
+def _project_python(root: Path) -> Path | None:
+    """Intérprete del entorno virtual del repositorio, si lo hay.
+
+    Sin esto se resolvía `python` por PATH, que es el intérprete que resulte
+    estar activo — a menudo el de OTRO proyecto. Los tests entonces fallan con
+    `ModuleNotFoundError` sobre el propio paquete que se está auditando, y eso se
+    reporta como "los tests fallan" cuando en realidad no llegaron a correr.
+    Un falso positivo así es peor que no medir: acusa al repositorio de un
+    defecto que no tiene.
+    """
+    for relative in _VENV_PYTHONS:
+        candidate = root / relative
+        if candidate.is_file():
+            return candidate.resolve()
+    return None
+
+
 def _find_tool(candidates: list[str], root: Path) -> dict[str, Any]:
+    # El intérprete del proyecto gana a cualquier `python` del PATH.
+    if candidates and candidates[0] in {"python3", "python"}:
+        venv_python = _project_python(root)
+        if venv_python:
+            return {"status": "available", "command": str(venv_python)}
     for candidate in candidates:
         local = root / candidate
         if local.is_file():

@@ -80,7 +80,21 @@ def _package_scripts(root: Path, configurations: list[str]) -> tuple[str | None,
 
 
 def _python_checks(root: Path, inv: dict[str, Any], profile: str) -> list[dict[str, Any]]:
-    py = _tool(inv, "python-runtime") or _tool(inv, "python")
+    # Dos intérpretes distintos, y el orden importa:
+    #
+    #   `python`         → el del PROYECTO (detect_project prefiere su .venv).
+    #   `python-runtime` → el que ejecuta LA SKILL (sys.executable).
+    #
+    # Para compilar y ejecutar los tests del repositorio auditado manda el suyo:
+    # con el de la skill, `pytest` no encuentra el paquete que está auditando y
+    # falla con ModuleNotFoundError. Eso se reportaría como "los tests fallan"
+    # cuando en realidad no llegaron a arrancar — un falso positivo que acusa al
+    # repositorio de un defecto que no tiene.
+    #
+    # (Los scripts propios de la skill —medir artefactos, sonda de navegador— sí
+    # usan `python-runtime`: necesitan las dependencias de la skill, no las del
+    # proyecto.)
+    py = _tool(inv, "python") or _tool(inv, "python-runtime")
     configs = set(inv["configurations"])
     has_tests = any(item == "tests" or item.startswith("tests/") for item in _top_level_entries(root))
     checks = [

@@ -227,3 +227,17 @@ class WebRuntimeProbeTests(unittest.TestCase):
             # Navega a una URL: exige --allow-network. Pero no escribe nada.
             self.assertTrue(probe["network"])
             self.assertEqual(probe["workspace_effects"], "none")
+
+
+class ReportWiringTests(unittest.TestCase):
+    """Un adaptador sin registrar deja la medicion fuera del informe."""
+
+    def test_every_performance_adapter_reaches_the_report(self) -> None:
+        build_report = load_module("build_report", scripts / "build_report.py")
+        for kind in ("bundle-size", "pytest-benchmark", "web-runtime"):
+            # Sin esto el check se ejecuta, pasa, y su medida se pierde: la
+            # auditoria diria "correcto" sin haber mirado nada.
+            self.assertIn(kind, normalize_tool_output.JSON_PARSERS,
+                          f"{kind} no tiene adaptador")
+            self.assertIn(kind, build_report.SUPPORTED_FORMATS,
+                          f"{kind} no esta registrado en build_report")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -122,3 +123,81 @@ example.go:3.1,4.1 1 0
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class FingerprintUniquenessTests(unittest.TestCase):
+    """Dos hallazgos distintos nunca pueden compartir id."""
+
+    def test_two_secrets_on_the_same_line_get_different_ids(self) -> None:
+        # Caso real: una linea con dos tokens. Antes producian la misma huella,
+        # el mismo id, y el validador rechazaba el informe COMPLETO -- es decir,
+        # la auditoria no entregaba nada.
+        data = [
+            {"RuleID": "notion-api-token", "Description": "Notion token",
+             "File": "notes.md", "StartLine": 158, "StartColumn": 10},
+            {"RuleID": "notion-api-token", "Description": "Notion token",
+             "File": "notes.md", "StartLine": 158, "StartColumn": 70},
+        ]
+        findings, _, _ = normalize_tool_output.parse_gitleaks(data, None)
+        self.assertEqual(len(findings), 2)
+        self.assertNotEqual(findings[0]["id"], findings[1]["id"])
+        self.assertNotEqual(findings[0]["fingerprint"], findings[1]["fingerprint"])
+
+    def test_the_fingerprint_is_stable_across_runs(self) -> None:
+        """Debe poder deduplicarse y silenciarse: no vale un contador."""
+        data = [{"RuleID": "aws-key", "Description": "AWS", "File": "a.py",
+                 "StartLine": 3, "StartColumn": 12}]
+        first, _, _ = normalize_tool_output.parse_gitleaks(data, None)
+        second, _, _ = normalize_tool_output.parse_gitleaks(data, None)
+        self.assertEqual(first[0]["fingerprint"], second[0]["fingerprint"])
+
+
+class VendoredExclusionTests(unittest.TestCase):
+    """SKILL.md paso 2: excluir dependencias, cache y salida generada."""
+
+    def _gitleaks(self, *paths: str):
+        return [{"RuleID": "generic-api-key", "Description": "key", "File": p,
+                 "StartLine": 1, "StartColumn": 1} for p in paths]
+
+    def test_dependencies_and_generated_files_are_excluded(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "gitleaks.json"
+            report.write_text(json.dumps(self._gitleaks(
+                ".venv/Lib/site-packages/pkg/config.py",
+                "node_modules/lib/index.js",
+                "tests/__pycache__/test_x.cpython-312.pyc",
+                "src/app/settings.py",                      # este SI es codigo
+            )), encoding="utf-8")
+            result = normalize_tool_output.normalize("gitleaks", report)
+            files = [f["locations"][0]["file"] for f in result["findings"]]
+            self.assertEqual(files, ["src/app/settings.py"])
+
+    def test_paths_the_repository_itself_ignores_are_excluded(self) -> None:
+        """Cada repo declara lo suyo en .gitignore; se le pregunta a git."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            (root / ".gitignore").write_text("generated/" + chr(10), encoding="utf-8")
+            (root / "generated").mkdir()
+            report = root / "gitleaks.json"
+            report.write_text(json.dumps(self._gitleaks(
+                "generated/data.md", "src/app.py",
+            )), encoding="utf-8")
+            result = normalize_tool_output.normalize("gitleaks", report, root)
+            files = [f["locations"][0]["file"] for f in result["findings"]]
+            self.assertEqual(files, ["src/app.py"])
+
+    def test_what_was_excluded_is_declared_not_hidden(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "gitleaks.json"
+            report.write_text(json.dumps(self._gitleaks(".venv/x.py")), encoding="utf-8")
+            result = normalize_tool_output.normalize("gitleaks", report)
+            self.assertEqual(result["findings"], [])
+            self.assertTrue(any("quedaron fuera" in item for item in result["limitations"]))
+
+    def test_the_exclusion_can_be_turned_off(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / "gitleaks.json"
+            report.write_text(json.dumps(self._gitleaks(".venv/x.py")), encoding="utf-8")
+            result = normalize_tool_output.normalize("gitleaks", report, include_vendored=True)
+            self.assertEqual(len(result["findings"]), 1)

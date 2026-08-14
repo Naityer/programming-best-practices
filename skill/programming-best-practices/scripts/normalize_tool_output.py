@@ -7,12 +7,77 @@ import argparse
 import hashlib
 import json
 import re
+import shutil
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Callable
 
 SECRET_RE = re.compile(r"(?i)(secret|token|password|api[_-]?key)\s*[:=]\s*\S+")
+
+# Rutas que NO son el código del proyecto: dependencias, cachés y salida
+# generada. `SKILL.md` ordena en su paso 2 excluirlas ("Exclude generated,
+# vendored, cache, dependency, and build-output directories unless the request
+# targets them"), pero los escáneres que recorren el disco por su cuenta no lo
+# hacían, y el resultado era una auditoría inservible: sobre este mismo
+# repositorio, 263 hallazgos BLOQUEANTES de los cuales 260 estaban en `.venv/` y
+# en datos generados, y los 3 restantes eran ficheros `.pyc` y un fixture de
+# test con un token falso. Cero reales. Un informe así no se lee: se ignora, y
+# con él se ignora el hallazgo verdadero del día que aparezca.
+VENDORED_RE = re.compile(
+    r"(^|/)("
+    r"\.venv|venv|env|virtualenv"
+    r"|node_modules|bower_components|vendor"
+    r"|__pycache__|\.pytest_cache|\.mypy_cache|\.ruff_cache|\.tox"
+    r"|site-packages|dist-info|egg-info"
+    r"|dist|build|out|target|coverage|htmlcov"
+    r"|\.git|\.next|\.turbo|\.gradle|\.m2"
+    r")(/|$)"
+    r"|\.(pyc|pyo|min\.js|min\.css|map)$"
+)
+
+
+def _is_vendored(path: str) -> bool:
+    return bool(VENDORED_RE.search(str(path or "").replace("\\", "/")))
+
+
+def _git_ignored(paths: list[str], root: Path | None) -> set[str]:
+    """Subconjunto de `paths` que el propio repositorio declara ignorado.
+
+    `VENDORED_RE` cubre lo que es basura en cualquier proyecto, pero cada
+    repositorio tiene además lo suyo — un directorio de datos, artefactos de un
+    generador — y ya lo ha declarado en `.gitignore`. Preguntárselo a git es
+    mejor que adivinar con una lista de nombres: no hay que codificar
+    convenciones ajenas (`projects/`, `.audit/`) que en otro proyecto podrían
+    ser código de verdad.
+
+    Silencioso ante cualquier fallo: sin git, o fuera de un repositorio, queda
+    solo el patrón estático, que es un mínimo razonable.
+    """
+    if not paths or root is None:
+        return set()
+    git = shutil.which("git")
+    if not git:
+        return set()
+    # `-z` y bytes, no texto separado por saltos de línea. En Windows el modo
+    # texto traduce `\n` a `\r\n`, git se come el `\r` como parte del nombre del
+    # fichero y devuelve la ruta entrecomillada (`"generated/data.md\r"`), que
+    # no casa con nada. Separar por NUL evita a la vez la traducción de saltos
+    # y el entrecomillado de rutas con caracteres especiales.
+    try:
+        completed = subprocess.run(
+            [git, "check-ignore", "-z", "--stdin"],
+            input=b"\0".join(path.encode("utf-8") for path in paths),
+            capture_output=True, cwd=str(root), timeout=60, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    return {
+        chunk.decode("utf-8", errors="replace").replace("\\", "/")
+        for chunk in completed.stdout.split(b"\0")
+        if chunk
+    }
 
 
 def _redact(text: Any) -> str:
@@ -57,8 +122,17 @@ def _finding(
     confidence: str = "high",
     metric: str | None = None,
     value: Any = None,
+    discriminator: str | int | None = None,
 ) -> dict[str, Any]:
+    # `discriminator` distingue dos hallazgos que comparten herramienta, regla,
+    # fichero y línea. Ocurre de verdad: dos secretos en la MISMA línea daban la
+    # misma huella, dos ids iguales, y el validador rechazaba el informe entero
+    # — la auditoría no producía nada. Suele ser la columna, y por eso se elige
+    # ese dato y no un contador: la huella tiene que seguir siendo estable entre
+    # ejecuciones para poder deduplicar y silenciar hallazgos.
     raw = f"{tool}|{rule}|{file}|{line or 0}|{title}"
+    if discriminator is not None:
+        raw = f"{raw}|{discriminator}"
     fingerprint = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
     evidence: dict[str, Any] = {"source_type": "tool", "source": tool, "message": _redact(message)}
     if metric:
@@ -117,6 +191,7 @@ def parse_gitleaks(data: Any, root: Path | None) -> tuple[list[dict[str, Any]], 
             "A credential-like value was detected; the value is redacted.",
             "If valid, repository access may enable credential compromise.",
             "Revoke or rotate the credential, remove it from source and authorized history, and use a secret store.",
+            discriminator=item.get("StartColumn"),
         ))
     return findings, {}, []
 
@@ -465,7 +540,7 @@ JSON_PARSERS: dict[str, Callable[[Any, Path | None], tuple[list[dict[str, Any]],
 }
 
 
-def normalize(tool: str, input_path: Path, root: Path | None = None) -> dict[str, Any]:
+def normalize(tool: str, input_path: Path, root: Path | None = None, *, include_vendored: bool = False) -> dict[str, Any]:
     if tool in JSON_PARSERS:
         data = json.loads(input_path.read_text(encoding="utf-8-sig"))
         findings, dimensions, limitations = JSON_PARSERS[tool](data, root)
@@ -479,6 +554,30 @@ def normalize(tool: str, input_path: Path, root: Path | None = None) -> dict[str
         findings, dimensions, limitations = parser(text, root)
     else:
         raise ValueError(f"unsupported tool: {tool}")
+
+    # Se descartan los hallazgos que caen en dependencias, cachés o salida
+    # generada — ver `VENDORED_RE`. El recuento se declara como limitación en
+    # vez de desaparecer en silencio: ocultar sin decirlo sería tan malo como
+    # ahogar el informe en ruido.
+    if not include_vendored:
+        all_paths = sorted({loc.get("file", "") for f in findings for loc in f.get("locations", []) if loc.get("file")})
+        ignored = _git_ignored(all_paths, root)
+        kept = [
+            f for f in findings
+            if not any(
+                _is_vendored(loc.get("file", "")) or loc.get("file", "").replace("\\", "/") in ignored
+                for loc in f.get("locations", [])
+            )
+        ]
+        dropped = len(findings) - len(kept)
+        if dropped:
+            limitations = [
+                *limitations,
+                f"{dropped} hallazgo(s) de {tool} en dependencias o ficheros generados "
+                f"quedaron fuera del informe; usa --include-vendored para incluirlos.",
+            ]
+        findings = kept
+
     return {
         "schema_version": "1.0.0",
         "tool": tool,
@@ -493,10 +592,12 @@ def main() -> int:
     parser.add_argument("--tool", required=True, choices=sorted([*JSON_PARSERS, "jacoco", "cobertura", "lcov", "go-cover", "mutmut", "pit"]))
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--root", type=Path)
+    parser.add_argument("--include-vendored", action="store_true",
+                        help="No excluir dependencias, cachés ni ficheros generados")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
-        result = normalize(args.tool, args.input, args.root)
+        result = normalize(args.tool, args.input, args.root, include_vendored=args.include_vendored)
     except (OSError, ValueError, json.JSONDecodeError, ET.ParseError) as exc:
         print(str(exc), file=sys.stderr)
         return 2

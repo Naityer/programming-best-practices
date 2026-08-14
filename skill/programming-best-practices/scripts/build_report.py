@@ -16,6 +16,12 @@ SUPPORTED_FORMATS = {
     "semgrep", "gitleaks", "trivy", "osv-scanner", "coverage-py", "ruff-json",
     "jacoco", "cobertura", "lcov", "pit", "stryker", "go-cover", "llvm-cov",
     "mutmut", "cargo-mutants",
+    # Rendimiento. Registrar el adaptador en normalize_tool_output NO basta:
+    # sin estar aquí, y sin su fichero en `candidates` de `_auto_fragment`, el
+    # check se ejecuta y pasa pero su medición no llega nunca al informe. La
+    # auditoría diría "correcto" sin haber mirado nada, que es el peor
+    # resultado posible.
+    "bundle-size", "pytest-benchmark", "web-runtime",
 }
 
 
@@ -43,6 +49,9 @@ def _auto_fragment(check: dict[str, Any], root: Path) -> dict[str, Any] | None:
         "go-cover": artifact / "go-cover.out",
         "llvm-cov": artifact / "llvm-cov.json",
         "cargo-mutants": artifact / "outcomes.json",
+        "bundle-size": artifact / "bundle-size.json",
+        "pytest-benchmark": artifact / "benchmark.json",
+        "web-runtime": artifact / "web-runtime.json",
     }
     input_path = candidates.get(kind, Path(check.get("stdout") or ""))
     if kind == "cobertura" and not input_path.is_file():

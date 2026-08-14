@@ -84,3 +84,36 @@ class DetectProjectTests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class ProjectVirtualenvTests(unittest.TestCase):
+    """El interprete del repositorio manda sobre el del PATH."""
+
+    def test_a_project_virtualenv_wins_over_the_one_on_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "pyproject.toml").write_text("[project]\nname='x'\n", encoding="utf-8")
+            (root / "app.py").write_text("value = 1\n", encoding="utf-8")
+            # Un venv del proyecto, en el layout de la plataforma que toque.
+            for relative in (Path(".venv") / "Scripts" / "python.exe", Path(".venv") / "bin" / "python"):
+                target = root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("", encoding="utf-8")
+
+            inventory = detect_project.detect(root)
+            command = inventory["tools"]["python"]["command"]
+            self.assertTrue(
+                Path(command).is_relative_to(root),
+                f"deberia usar el venv del proyecto, no {command}",
+            )
+
+    def test_without_a_project_virtualenv_it_falls_back_to_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "pyproject.toml").write_text("[project]\nname='x'\n", encoding="utf-8")
+            (root / "app.py").write_text("value = 1\n", encoding="utf-8")
+            inventory = detect_project.detect(root)
+            entry = inventory["tools"]["python"]
+            # Hay un Python ejecutando este test, asi que debe encontrarlo.
+            self.assertEqual(entry["status"], "available")
+            self.assertFalse(Path(entry["command"]).is_relative_to(root))
