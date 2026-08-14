@@ -56,11 +56,12 @@ class PlanPerformanceTests(unittest.TestCase):
             checks = {item["id"]: item for item in plan_audit.create_plan(root, "standard")["checks"]}
             self.assertEqual(checks["js.build"]["workspace_effects"], "cache")
             self.assertEqual(checks["js.bundle-size"]["workspace_effects"], "none")
-            # Medir rendimiento es local: nada de esta categoría debe pedir red.
-            # (Otras sí la necesitan legítimamente — `universal.osv` consulta la
-            # base de vulnerabilidades —, por eso se acota a `performance`.)
+            # Medir sobre artefactos del disco es local: no debe pedir red.
+            # Se excluye `web.runtime-probe`, que navega a una URL y por eso
+            # declara `network` y exige `--allow-network` (y otras categorías la
+            # necesitan legítimamente: `universal.osv` consulta la base de CVEs).
             for check in checks.values():
-                if check["category"] == "performance":
+                if check["category"] == "performance" and check["id"] != "web.runtime-probe":
                     self.assertFalse(check["network"], f"{check['id']} no debería pedir red")
 
     def test_bundle_size_is_unavailable_without_a_build_output_directory(self) -> None:
@@ -162,3 +163,67 @@ class ComparePerfBaselineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WebRuntimeProbeTests(unittest.TestCase):
+    """La sonda de navegador: el diagnóstico que detecta un bucle que no descansa."""
+
+    def _document(self, **overrides) -> dict:
+        target = {
+            "url": "http://127.0.0.1:9/app", "reachable": True, "idle_seconds": 5,
+            "idle_frames": 0, "idle_frames_per_second": 0.0, "idle_requests": 0,
+            "long_tasks": 0, "dom_interactive_ms": 120, "load_ms": 300,
+            "request_count": 4, "transferred_bytes": 1000, "dom_nodes": 50,
+        }
+        target.update(overrides)
+        return {"schema_version": "1.0.0", "tool": "web-runtime",
+                "targets": {"app": target}, "limitations": []}
+
+    def test_a_loop_that_never_idles_is_reported_without_needing_a_baseline(self) -> None:
+        findings, dimensions, _ = normalize_tool_output.parse_web_runtime(
+            self._document(idle_frames=301, idle_frames_per_second=60.2), None,
+        )
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0]["rule_id"], "performance.idle_render_loop")
+        self.assertEqual(findings[0]["severity"], "high")
+        self.assertEqual(dimensions["performance"]["web_runtime"]["app"]["idle_frames"], 301)
+
+    def test_a_quiet_page_produces_no_finding(self) -> None:
+        findings, _, _ = normalize_tool_output.parse_web_runtime(self._document(), None)
+        self.assertEqual(findings, [])
+
+    def test_a_few_trailing_frames_are_not_reported(self) -> None:
+        """Una transición terminando no es un bucle enloquecido."""
+        findings, _, _ = normalize_tool_output.parse_web_runtime(
+            self._document(idle_frames=12, idle_frames_per_second=2.4), None,
+        )
+        self.assertEqual(findings, [])
+
+    def test_an_unreachable_target_is_a_limitation_not_a_pass(self) -> None:
+        document = self._document()
+        document["targets"]["app"] = {"url": "http://127.0.0.1:9/app", "reachable": False}
+        document["limitations"] = ["app: No se pudo cargar"]
+        findings, _, limitations = normalize_tool_output.parse_web_runtime(document, None)
+        self.assertEqual(findings, [])          # no se inventa un veredicto
+        self.assertEqual(len(limitations), 1)   # pero se declara que falta evidencia
+
+    def test_probe_is_planned_only_in_deep_and_only_with_declared_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _js_project(root)
+            without = {c["id"]: c for c in plan_audit.create_plan(root, "deep")["checks"]}
+            self.assertEqual(without["web.runtime-probe"]["status"], "unavailable")
+            self.assertIn(".perf-targets.json", without["web.runtime-probe"]["reason"])
+
+            (root / ".perf-targets.json").write_text(
+                json.dumps({"web": [{"name": "app", "url": "http://127.0.0.1:8000/"}]}), encoding="utf-8",
+            )
+            standard = {c["id"]: c for c in plan_audit.create_plan(root, "standard")["checks"]}
+            deep = {c["id"]: c for c in plan_audit.create_plan(root, "deep")["checks"]}
+            # Necesita un servicio levantado: no es algo de cada iteración.
+            self.assertEqual(standard["web.runtime-probe"]["minimum_profile"], "deep")
+            probe = deep["web.runtime-probe"]
+            self.assertEqual(probe["category"], "performance")
+            # Navega a una URL: exige --allow-network. Pero no escribe nada.
+            self.assertTrue(probe["network"])
+            self.assertEqual(probe["workspace_effects"], "none")

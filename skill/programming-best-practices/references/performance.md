@@ -54,7 +54,7 @@ the repository), honor them — that is a repository convention, not an inventio
 | Stack | Cheap signal | Deeper signal |
 | --- | --- | --- |
 | Web frontend | shipped bytes per build (`js.bundle-size`) | frames while idle, long tasks, time-to-interactive |
-| Canvas / render loop | work per frame; does the loop stop when nothing changes | frames rendered during a fixed idle window |
+| Canvas / render loop | work per frame; does the loop stop when nothing changes | `web.runtime-probe`: frames requested during a fixed idle window |
 | Backend HTTP | server CPU per request; payload bytes | queries per request, cache hit rate |
 | Database | queries per operation; presence of an index for the actual filter | rows examined vs. returned |
 | Library / CPU code | `pytest-benchmark`, `cargo bench` | profiler output on the hot path |
@@ -67,6 +67,10 @@ concrete, verifiable fix:
 - **A loop that never idles.** An animation or polling loop that keeps running
   with nothing to do. Costs battery and CPU permanently and is invisible in a
   screenshot. Ask: with the input static, does the process go quiet?
+  `probe_web_runtime.py` answers this directly, and it is the one performance
+  finding reported without a baseline: zero is the correct value by definition,
+  so no threshold has to be invented. Declare the pages to probe in
+  `.perf-targets.json` at the repository root.
 - **Superlinear algorithm on user-scaled data.** All-pairs work over a collection
   the user controls the size of. Fine in the demo, unusable in production.
 - **Recomputing derived state per frame or per event.** A value that only changes

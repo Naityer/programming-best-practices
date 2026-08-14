@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -194,6 +195,78 @@ def _javascript_checks(root: Path, inv: dict[str, Any], profile: str) -> list[di
     return checks
 
 
+"""Objetivos de rendimiento declarados por el repositorio.
+
+Formato de `.perf-targets.json`, en la raíz:
+
+    {"web": [{"name": "mapa", "url": "http://127.0.0.1:8000/webui/graph.html"}]}
+
+Un fichero versionado y no un argumento de línea de comandos porque una URL de
+desarrollo es una convención DEL REPOSITORIO, igual que sus scripts de
+`package.json`: viaja con el código, se revisa en el diff y no hay que
+recordarla. Es el mismo principio que ya sigue el resto de la skill al leer la
+configuración nativa del proyecto.
+"""
+PERF_TARGETS_FILE = ".perf-targets.json"
+
+
+def _perf_targets(root: Path) -> dict[str, Any]:
+    path = root / PERF_TARGETS_FILE
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _web_runtime_check(root: Path, inv: dict[str, Any], profile: str) -> dict[str, Any]:
+    """Sonda de navegador: ¿descansa la página cuando nadie la toca?
+
+    Es el único check que necesita RED y un servicio ya levantado, así que
+    `run_audit.py` lo salta salvo que se autorice explícitamente con
+    `--allow-network`. Y por eso vive en DEEP: no es algo que deba correr en
+    cada iteración.
+    """
+    targets = _perf_targets(root).get("web") or []
+    python = _tool(inv, "python-runtime") or _tool(inv, "python")
+    # Playwright es una librería, no un ejecutable en PATH: se comprueba
+    # importándola con el mismo intérprete que ejecutaría la sonda.
+    has_playwright = False
+    if python:
+        try:
+            has_playwright = subprocess.run(
+                [python, "-c", "import playwright"],
+                capture_output=True, timeout=30, check=False,
+            ).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            has_playwright = False
+
+    argv = None
+    reason = ""
+    if not targets:
+        reason = f"No hay objetivos web declarados en {PERF_TARGETS_FILE}."
+    elif not python:
+        reason = "No hay intérprete de Python disponible."
+    elif not has_playwright:
+        reason = "Playwright no está instalado (pip install playwright && playwright install chromium)."
+    else:
+        script = str(Path(__file__).resolve().parent / "probe_web_runtime.py")
+        argv = [python, script, "--output", "{artifact}/web-runtime.json"]
+        for target in targets:
+            if not isinstance(target, dict) or not target.get("url"):
+                continue
+            argv += ["--url", str(target["url"]), "--name", str(target.get("name") or "target")]
+
+    return _check(
+        "web.runtime-probe", "web-runtime", "performance", argv,
+        minimum_profile="deep", output_format="web-runtime",
+        workspace_effects="none", network=True, timeout=600,
+        reason=reason,
+    )
+
+
 # Convención de cada empaquetador. Se comprueba cuál existe de verdad en vez de
 # suponer: medir un directorio equivocado daría un cero silencioso.
 _BUILD_OUTPUT_DIRS = ("dist", "build", "out", ".output/public", ".next", "public/build")
@@ -357,6 +430,9 @@ def create_plan(root: Path, profile: str = "standard", scope: str | None = None)
                              reason="CodeQL requires repository-specific database creation and applicable licensing."))
 
     configured_sonar = any(Path(item).name == "sonar-project.properties" for item in inventory["configurations"])
+    # Sonda de navegador: la única que necesita red y un servicio ya en marcha.
+    checks.append(_web_runtime_check(root, inventory, profile))
+
     sonar = _tool(inventory, "sonar-scanner")
     if PROFILE_RANK[profile] >= 2:
         checks.append(_check("universal.sonar", "sonar-scanner", "quality",

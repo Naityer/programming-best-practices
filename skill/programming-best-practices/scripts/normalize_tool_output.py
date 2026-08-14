@@ -392,6 +392,63 @@ def parse_pytest_benchmark(data: Any, root: Path | None) -> tuple[list[dict[str,
     return [], {"performance": {"benchmarks": benchmarks}}, []
 
 
+def parse_web_runtime(data: Any, root: Path | None) -> tuple[list[dict[str, Any]], dict[str, Any], list[str]]:
+    """Salida de `probe_web_runtime.py`.
+
+    Aquí SÍ se emite un hallazgo, a diferencia del resto de adaptadores de
+    rendimiento, y por una razón concreta: "la página pide fotogramas sin parar
+    estando en reposo" no necesita una línea base con la que compararse. Es un
+    defecto en términos absolutos —el trabajo no produce nada— igual que lo es
+    un secreto en el código. El umbral no se inventa: cero es lo correcto, y se
+    exige un margen amplio para no confundirlo con una animación de entrada
+    todavía en marcha.
+
+    Los tamaños y tiempos, en cambio, no se juzgan: van como dimensiones y los
+    compara `compare_perf_baseline.py`.
+    """
+    findings: list[dict[str, Any]] = []
+    targets = data.get("targets", {}) or {}
+    for label, target in targets.items():
+        if not target.get("reachable"):
+            continue
+        idle_fps = target.get("idle_frames_per_second") or 0
+        # 5 fps de margen: por debajo puede ser una transición terminando; por
+        # encima es un bucle que no descansa.
+        if idle_fps > 5:
+            findings.append(_finding(
+                "web-runtime", "performance.idle_render_loop",
+                f"El bucle de render de «{label}» no descansa",
+                "performance", "medium" if idle_fps < 30 else "high",
+                target.get("url", label), None,
+                f"{target.get('idle_frames')} fotogramas en {target.get('idle_seconds')} s "
+                f"sin interacción ({idle_fps}/s).",
+                "Consume CPU y batería de forma permanente mientras la pestaña esté "
+                "abierta, sin producir ningún cambio visible.",
+                "Haz que el bucle se detenga cuando no haya nada que animar: pide un "
+                "fotograma solo ante un cambio real (invalidación) y deja que la "
+                "simulación converja y pare.",
+                metric="idle_frames_per_second", value=idle_fps,
+            ))
+
+    dimensions = {
+        "performance": {
+            "web_runtime": {
+                label: {
+                    key: target.get(key)
+                    for key in (
+                        "reachable", "idle_frames", "idle_frames_per_second", "idle_requests",
+                        "long_tasks", "dom_interactive_ms", "load_ms", "request_count",
+                        "transferred_bytes", "dom_nodes",
+                    )
+                    if key in target
+                }
+                for label, target in targets.items()
+            }
+        }
+    }
+    return findings, dimensions, list(data.get("limitations", []) or [])
+
+
 JSON_PARSERS: dict[str, Callable[[Any, Path | None], tuple[list[dict[str, Any]], dict[str, Any], list[str]]]] = {
     "semgrep": parse_semgrep,
     "gitleaks": parse_gitleaks,
@@ -404,6 +461,7 @@ JSON_PARSERS: dict[str, Callable[[Any, Path | None], tuple[list[dict[str, Any]],
     "stryker": parse_stryker,
     "bundle-size": parse_bundle_size,
     "pytest-benchmark": parse_pytest_benchmark,
+    "web-runtime": parse_web_runtime,
 }
 
 
