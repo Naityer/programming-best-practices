@@ -113,7 +113,16 @@ def _python_checks(root: Path, inv: dict[str, Any], profile: str) -> list[dict[s
     for type_tool in ("mypy", "pyright"):
         executable = _tool(inv, type_tool)
         if executable:
-            argv = [executable, "."] if type_tool == "mypy" else [executable]
+            # Si el proyecto ya declara QUÉ comprobar (`files`/`packages`/
+            # `modules` en su config de mypy), se le deja mandar y no se le pasa
+            # ninguna ruta. Pasar `.` a secas la sobreescribe y arrastra todo el
+            # repositorio: sobre un layout `src/` normal eso hace que mypy vea
+            # `conftest.py` dos veces bajo dos nombres de módulo y aborte con
+            # "Source file found twice" — un fallo de la herramienta que se
+            # reportaría como un defecto del código.
+            argv = [executable]
+            if type_tool == "mypy" and not _mypy_declares_targets(root, inv["configurations"]):
+                argv.append(".")
             checks.append(_check(f"python.{type_tool}", type_tool, "correctness", argv, ecosystem="python", timeout=600))
             break
     if PROFILE_RANK[profile] >= 2:
@@ -125,7 +134,7 @@ def _python_checks(root: Path, inv: dict[str, Any], profile: str) -> list[dict[s
                              environment={"COVERAGE_FILE": "{artifact}/.coverage"},
                              reason="coverage.py or tests are unavailable."))
         checks.append(_check("python.coverage-report", "coverage-py", "coverage",
-                             [coverage, "json", "--data-file={artifact}/.coverage", "-o", "{artifact}/coverage.json"] if coverage and has_tests else None,
+                             [coverage, "json", "--data-file={artifact:python.coverage-run}/.coverage", "-o", "{artifact}/coverage.json"] if coverage and has_tests else None,
                              ecosystem="python", minimum_profile="standard", output_format="coverage-py",
                              workspace_effects="none", timeout=120,
                              depends_on=["python.coverage-run"],
@@ -152,6 +161,66 @@ def _python_checks(root: Path, inv: dict[str, Any], profile: str) -> list[dict[s
                              workspace_effects="runtime", timeout=1800,
                              reason="No benchmarks/ directory or Python runtime is unavailable."))
     return checks
+
+
+def _ordered_checks(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Ordena por id, pero SIN adelantar un check a algo de lo que depende.
+
+    Antes se ordenaba solo alfabéticamente, y eso rompía las dependencias que el
+    propio plan declara: `python.coverage-report` va antes que
+    `python.coverage-run` en el alfabeto, así que se ejecutaba primero, el
+    ejecutor veía su prerequisito sin pasar y lo saltaba. Resultado: cobertura
+    medida y luego tirada a la basura, en silencio y en cada ejecución.
+
+    (`js.bundle-size` tras `js.build` funcionaba solo por suerte del alfabeto.)
+
+    Orden topológico estable: se respeta el orden alfabético entre iguales, así
+    que el plan sigue siendo determinista, que es lo que permite compararlo entre
+    ejecuciones. Un ciclo entre dependencias no cuelga: se emite igualmente y el
+    ejecutor lo saltará por prerequisito no cumplido.
+    """
+    by_id = {check["id"]: check for check in checks}
+    ordered: list[dict[str, Any]] = []
+    placed: set[str] = set()
+    visiting: set[str] = set()
+
+    def place(check_id: str) -> None:
+        if check_id in placed or check_id in visiting:
+            return          # ya colocado, o ciclo: no se insiste
+        visiting.add(check_id)
+        for dependency in by_id[check_id].get("depends_on", []):
+            if dependency in by_id:
+                place(dependency)
+        visiting.discard(check_id)
+        placed.add(check_id)
+        ordered.append(by_id[check_id])
+
+    for check_id in sorted(by_id):
+        place(check_id)
+    return ordered
+
+
+def _mypy_declares_targets(root: Path, configurations: list[str]) -> bool:
+    """`True` si el proyecto ya dice a mypy qué comprobar.
+
+    Se mira `files`/`packages`/`modules` en `pyproject.toml`, `mypy.ini`,
+    `.mypy.ini` o `setup.cfg`. Es una lectura de texto a propósito: leer TOML
+    o INI de verdad no aporta nada aquí y ataría el planificador a un parser.
+    """
+    candidates = ("pyproject.toml", "mypy.ini", ".mypy.ini", "setup.cfg")
+    for name in candidates:
+        if name not in {Path(item).name for item in configurations} and not (root / name).is_file():
+            continue
+        try:
+            text = (root / name).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if "[tool.mypy]" not in text and "[mypy]" not in text:
+            continue
+        section = text.split("[tool.mypy]", 1)[-1].split("[mypy]", 1)[-1]
+        if any(f"\n{key}" in f"\n{section}" for key in ("files", "packages", "modules")):
+            return True
+    return False
 
 
 def _top_level_entries(root: Path) -> list[str]:
@@ -461,7 +530,7 @@ def create_plan(root: Path, profile: str = "standard", scope: str | None = None)
         "scope": selected_scope,
         "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "inventory": inventory,
-        "checks": sorted(checks, key=lambda item: item["id"]),
+        "checks": _ordered_checks(checks),
     }
 
 

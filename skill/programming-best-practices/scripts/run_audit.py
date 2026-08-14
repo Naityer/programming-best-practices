@@ -44,10 +44,25 @@ def _allowed_executables(plan: dict[str, Any]) -> set[str]:
     return allowed
 
 
-def _safe_argv(argv: Any, artifact: Path, allowed: set[str]) -> list[str]:
+def _expand_artifacts(value: str, artifact: Path, artifact_dirs: dict[str, Path]) -> str:
+    """Sustituye `{artifact}` y `{artifact:<id-de-check>}`.
+
+    La segunda forma existe porque cada check recibe SU propio directorio, y dos
+    checks encadenados necesitan compartir un fichero: `coverage run` deja los
+    datos y `coverage json` los lee. Con solo `{artifact}` cada uno miraba en su
+    carpeta, el segundo no encontraba nada y reportaba "No data to report" —
+    cobertura medida durante 40 segundos y tirada a la basura en silencio.
+    """
+    for referenced, directory in artifact_dirs.items():
+        value = value.replace("{artifact:" + referenced + "}", str(directory))
+    return value.replace("{artifact}", str(artifact))
+
+
+def _safe_argv(argv: Any, artifact: Path, allowed: set[str],
+               artifact_dirs: dict[str, Path] | None = None) -> list[str]:
     if not isinstance(argv, list) or not argv or any(not isinstance(item, str) or not item for item in argv):
         raise ValueError("invalid argv")
-    expanded = [item.replace("{artifact}", str(artifact)) for item in argv]
+    expanded = [_expand_artifacts(item, artifact, artifact_dirs or {}) for item in argv]
     executable = os.path.normcase(str(Path(expanded[0]).resolve()))
     if executable not in allowed:
         raise ValueError(f"executable was not detected in the plan inventory: {expanded[0]}")
@@ -84,6 +99,7 @@ def execute_plan(
     allowed = _allowed_executables(plan)
     results: list[dict[str, Any]] = []
     statuses: dict[str, str] = {}
+    artifact_dirs: dict[str, Path] = {}
     versions: dict[str, str] = {}
 
     for check in plan["checks"]:
@@ -116,16 +132,17 @@ def execute_plan(
                 continue
             check_dir = destination / check["id"].replace("/", "_")
             check_dir.mkdir()
+            artifact_dirs[check["id"]] = check_dir
             result["artifact_dir"] = str(check_dir)
             try:
-                argv = _safe_argv(check["argv"], check_dir, allowed)
+                argv = _safe_argv(check["argv"], check_dir, allowed, artifact_dirs)
                 result["command"] = subprocess.list2cmdline(argv)
                 stdout_path = check_dir / "stdout.txt"
                 stderr_path = check_dir / "stderr.txt"
                 env = os.environ.copy()
                 env.update({"PYTHONDONTWRITEBYTECODE": "1", "NO_COLOR": "1", "CI": "1"})
                 env.update({
-                    key: value.replace("{artifact}", str(check_dir))
+                    key: _expand_artifacts(value, check_dir, artifact_dirs)
                     for key, value in check.get("environment", {}).items()
                 })
                 version_key = os.path.normcase(str(Path(argv[0]).resolve()))

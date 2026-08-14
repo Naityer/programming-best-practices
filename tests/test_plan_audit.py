@@ -89,3 +89,69 @@ class PlanAuditTests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class MypyTargetsTests(unittest.TestCase):
+    """Si el proyecto declara que comprobar, manda el proyecto."""
+
+    def _project(self, root: Path, mypy_config: str) -> None:
+        (root / "pyproject.toml").write_text(mypy_config, encoding="utf-8")
+        (root / "app.py").write_text("value = 1" + chr(10), encoding="utf-8")
+        scripts_dir = root / ".venv" / "Scripts"
+        scripts_dir.mkdir(parents=True)
+        (scripts_dir / "mypy.exe").write_text("", encoding="utf-8")
+        bin_dir = root / ".venv" / "bin"
+        bin_dir.mkdir(parents=True)
+        (bin_dir / "mypy").write_text("", encoding="utf-8")
+
+    def test_no_path_is_passed_when_the_project_declares_files(self) -> None:
+        # Pasar `.` sobreescribe la config y arrastra todo el repositorio: en un
+        # layout src/ eso hace que mypy vea conftest.py dos veces y ABORTE, lo
+        # que se reportaria como defecto del codigo y no de la invocacion.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._project(root, '[tool.mypy]' + chr(10) + 'files = ["src/app"]' + chr(10))
+            checks = {c["id"]: c for c in plan_audit.create_plan(root, "fast")["checks"]}
+            self.assertEqual(len(checks["python.mypy"]["argv"]), 1)
+
+    def test_a_path_is_passed_when_the_project_declares_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._project(root, "[project]" + chr(10) + "name = 'x'" + chr(10))
+            checks = {c["id"]: c for c in plan_audit.create_plan(root, "fast")["checks"]}
+            self.assertEqual(checks["python.mypy"]["argv"][-1], ".")
+
+
+class CheckOrderTests(unittest.TestCase):
+    """Un check nunca puede ir antes de aquello de lo que depende."""
+
+    def test_dependencies_come_first_even_against_the_alphabet(self) -> None:
+        # `coverage-report` va antes que `coverage-run` en el alfabeto. Con el
+        # orden alfabetico se ejecutaba primero, el ejecutor veia su
+        # prerequisito sin pasar, y la cobertura se medIa para tirarla.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "pyproject.toml").write_text("[tool.pytest.ini_options]" + chr(10), encoding="utf-8")
+            (root / "app.py").write_text("value = 1" + chr(10), encoding="utf-8")
+            (root / "tests").mkdir()
+            (root / "package.json").write_text('{"scripts":{"build":"vite build"}}', encoding="utf-8")
+            (root / "dist").mkdir()
+
+            checks = plan_audit.create_plan(root, "standard")["checks"]
+            position = {c["id"]: i for i, c in enumerate(checks)}
+            for check in checks:
+                for dependency in check.get("depends_on", []):
+                    if dependency in position:
+                        self.assertLess(
+                            position[dependency], position[check["id"]],
+                            f"{dependency} debe ir antes que {check['id']}",
+                        )
+
+    def test_the_order_is_still_deterministic(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "pyproject.toml").write_text("[project]" + chr(10) + "name='x'" + chr(10), encoding="utf-8")
+            (root / "app.py").write_text("value = 1" + chr(10), encoding="utf-8")
+            first = [c["id"] for c in plan_audit.create_plan(root, "standard")["checks"]]
+            second = [c["id"] for c in plan_audit.create_plan(root, "standard")["checks"]]
+            self.assertEqual(first, second)
