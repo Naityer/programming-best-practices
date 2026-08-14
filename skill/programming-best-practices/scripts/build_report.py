@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -83,28 +84,76 @@ def _matches(finding: dict[str, Any], decision: dict[str, Any]) -> bool:
     )
 
 
+def _snapshot(finding: dict[str, Any]) -> dict[str, Any]:
+    """Estado de un finding en el instante de la decisión, antes de mutarlo.
+
+    `evidence_source_types` es lo que `build_stats.py` necesita para separar
+    "hallazgo de herramienta" de "hallazgo solo-LLM" al calcular ratios de
+    falsos positivos y alucinación — hay que capturarlo ahora porque `confirm`
+    añade una evidencia `llm` al finding y contaminaría esa distinción si se
+    leyera después.
+    """
+    evidence = finding.get("evidence") or []
+    first = evidence[0] if evidence and isinstance(evidence[0], dict) else {}
+    return {
+        "fingerprint": finding.get("fingerprint"),
+        "rule_id": finding.get("rule_id"),
+        "category": finding.get("category"),
+        "severity": finding.get("severity"),
+        "confidence": finding.get("confidence"),
+        "locations": finding.get("locations"),
+        "evidence_source_types": sorted({item.get("source_type") for item in evidence if isinstance(item, dict)}),
+        "primary_source": first.get("source"),
+        "primary_message": first.get("message"),
+    }
+
+
+def _ledger_entry(
+    decision: dict[str, Any], action: Any, reason: str, matched: list[dict[str, Any]],
+    *, overrides: dict[str, Any] | None = None, unmatched: bool = False,
+) -> dict[str, Any]:
+    raw = f"{decision.get('fingerprint','')}|{decision.get('rule_id','')}|{action}|{reason}"
+    decision_id = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+    return {
+        "decision_id": decision_id,
+        "action": action,
+        "reason": reason,
+        "reviewed_at": decision.get("reviewed_at"),
+        "reviewer": decision.get("reviewer", "agent-semantic-review"),
+        "overrides": overrides,
+        "matched": matched,
+        "unmatched": unmatched,
+    }
+
+
 def _apply_review(
     findings: list[dict[str, Any]],
     decisions: list[dict[str, Any]] | None,
-) -> tuple[list[dict[str, Any]], list[str]]:
+) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
     if not decisions:
-        return findings, []
+        return findings, [], []
     remaining = list(findings)
     notes: list[str] = []
+    ledger: list[dict[str, Any]] = []
     allowed_overrides = {"title", "severity", "confidence", "impact", "recommendation"}
     for decision in decisions:
         matches = [item for item in remaining if _matches(item, decision)]
-        if not matches:
-            notes.append(f"Semantic review decision did not match a finding: {decision.get('fingerprint') or decision.get('rule_id') or 'unknown'}.")
-            continue
         action = decision.get("action")
         reason = str(decision.get("reason") or "").strip()
+        if not matches:
+            notes.append(f"Semantic review decision did not match a finding: {decision.get('fingerprint') or decision.get('rule_id') or 'unknown'}.")
+            ledger.append(_ledger_entry(decision, action, reason, [], unmatched=True))
+            continue
         if not reason:
             raise ValueError("semantic-review decisions require a non-empty reason")
+        # Instantánea tomada antes de mutar nada, para que el ledger registre
+        # qué evidencia respaldaba el hallazgo en el momento de decidir.
+        matched_snapshot = [_snapshot(item) for item in matches]
         if action == "dismiss":
             remaining = [item for item in remaining if item not in matches]
             for item in matches:
                 notes.append(f"Dismissed {item['rule_id']} at {item['locations'][0]['file']}: {reason or 'semantic review found no actionable issue'}.")
+            ledger.append(_ledger_entry(decision, action, reason, matched_snapshot))
         elif action == "confirm":
             overrides = decision.get("overrides", {})
             unknown = set(overrides) - allowed_overrides
@@ -117,9 +166,10 @@ def _apply_review(
                     "source": "semantic-review",
                     "message": reason or "The finding was confirmed after contextual review.",
                 })
+            ledger.append(_ledger_entry(decision, action, reason, matched_snapshot, overrides=overrides or None))
         else:
             raise ValueError("semantic-review action must be 'confirm' or 'dismiss'")
-    return remaining, notes
+    return remaining, notes, ledger
 
 
 def build(
@@ -147,7 +197,7 @@ def build(
             _merge_dimensions(dimensions, fragment.get("dimensions", {}))
             limitations.extend(fragment.get("limitations", []))
 
-    findings, review_notes = _apply_review(findings, semantic_review)
+    findings, review_notes, ledger = _apply_review(findings, semantic_review)
     limitations.extend(review_notes)
 
     tools = []
@@ -177,6 +227,21 @@ def build(
             "gate": is_gate,
             "effective_scope": check.get("effective_scope", "repository"),
         }
+        if check.get("category"):
+            # `execution.json` no sobrevive fuera del árbol temporal en que se
+            # generó (`run_audit.py` exige que su `--output-dir` esté fuera del
+            # repo), así que `report.json` es lo único que persiste bajo
+            # `.quality-audit/`. Sin categoría aquí, `build_stats.py` no puede
+            # agregar por categoría entre ejecuciones históricas.
+            item["category"] = check["category"]
+        if check.get("output_format"):
+            # El ejecutable (`check["tool"]`, ya en `name`) es a menudo
+            # genérico y compartido por varios checks distintos del mismo
+            # ecosistema (`go.vet`, `go.tests` y `go.coverage` son los tres
+            # "go"). `output_format` es lo que de verdad identifica QUÉ mide
+            # el check — es la clave que usa `build_stats.py` para su registro
+            # de dominios de medición ("qué mide cada herramienta").
+            item["output_format"] = check["output_format"]
         if check.get("command"):
             item["command"] = check["command"]
         if check.get("reason"):
@@ -206,7 +271,7 @@ def build(
         "failed": sum(status in {"findings", "failed", "timed_out"} for status in gates),
         "incomplete": sum(status in {"skipped", "unavailable"} for status in gates),
     }
-    return {
+    result = {
         "schema_version": "1.0.0",
         "audit": {
             "repository": root.name,
@@ -221,6 +286,16 @@ def build(
         "findings": findings,
         "limitations": sorted(set(limitations)),
     }
+    if semantic_review is not None:
+        # No es un campo del informe: `audit-result.schema.json` prohíbe
+        # cualquier clave que no conozca en cada nivel. `main()` la retira
+        # antes de validar/renderizar y la escribe aparte como
+        # `review-ledger.json` — ver `reporting.md` y `statistics.md`.
+        for entry in ledger:
+            if not entry.get("reviewed_at"):
+                entry["reviewed_at"] = execution["generated_at"]
+        result["_review_ledger"] = ledger
+    return result
 
 
 def _load_fragments(paths: list[Path]) -> list[dict[str, Any]]:
@@ -248,15 +323,38 @@ def main() -> int:
             if not isinstance(review, list):
                 raise ValueError("semantic review must contain a decisions array")
         report = build(execution, _load_fragments(args.fragment), semantic, review)
+        ledger = report.pop("_review_ledger", None)
         staging = args.output_dir.parent / f".{args.output_dir.name}.canonical.json"
         if staging.exists():
             raise FileExistsError(f"staging file exists: {staging}")
+        # En el primer audit de un repositorio, `<repo>/.quality-audit/` (el
+        # padre de `--output-dir` cuando se sigue la convención documentada)
+        # todavía no existe — nada más lo crea antes de este punto. Sin este
+        # `mkdir`, la primera ejecución siempre fallaba con un `FileNotFoundError`
+        # críptico sobre el fichero de staging, no sobre la causa real.
+        staging.parent.mkdir(parents=True, exist_ok=True)
         staging.write_text(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8")
         try:
             destination = render(staging, Path(execution["root"]), args.output_dir)
         finally:
             if staging.exists():
                 staging.unlink()
+        if ledger is not None:
+            # Fichero hermano, no un campo del informe: preserva el contrato de
+            # `render_report.py` de escribir exactamente 3 ficheros y permite
+            # que `review-ledger.json` evolucione sin tocar el esquema del
+            # informe. Se escribe siempre que se pasó `--semantic-review`,
+            # incluso con cero decisiones: la ausencia del fichero y un array
+            # vacío significan cosas distintas para `build_stats.py`.
+            ledger_doc = {
+                "schema_version": "1.0.0",
+                "repository": Path(execution["root"]).name,
+                "generated_at": execution["generated_at"],
+                "decisions": ledger,
+            }
+            (destination / "review-ledger.json").write_text(
+                json.dumps(ledger_doc, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8",
+            )
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(str(exc), file=sys.stderr)
         return 2

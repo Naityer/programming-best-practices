@@ -1,0 +1,273 @@
+{
+  "anomalies": {
+    "decision_reversals": [],
+    "findings_on_removed_code": [],
+    "location_conflicts": [],
+    "stale_baselines": []
+  },
+  "by_category": {
+    "security": {
+      "findings_total": 2,
+      "tools": [
+        "semgrep"
+      ]
+    }
+  },
+  "by_tool": {
+    "universal.semgrep (semgrep)": {
+      "avg_duration_ms": 110.0,
+      "category": "security",
+      "coverage_of_codebase": {
+        "computable": false,
+        "reason": "requires --plan; not supplied"
+      },
+      "duration_ms_stddev": 14.1,
+      "findings_total": 2,
+      "gate": false,
+      "measurement_domain": "Static pattern rules matched against source files in the configured ruleset.",
+      "measurement_domain_source": "static-registry",
+      "reproducibility": {
+        "last_command": "semgrep --config=auto .",
+        "last_run": ".quality-audit/20260805T090000Z",
+        "last_version": "1.0"
+      },
+      "review": {
+        "confirmation_rate": 1.0,
+        "confirmation_rate_ci95": [
+          0.2065,
+          1.0
+        ],
+        "confirmed": 1,
+        "dismissed": 0,
+        "false_positive_rate": 0.0,
+        "false_positive_rate_ci95": [
+          0.0,
+          0.7935
+        ],
+        "reviewed": 1,
+        "sample_size_warning": false
+      },
+      "runs_seen": 2,
+      "status_histogram": {
+        "findings": 2
+      }
+    }
+  },
+  "current_run": {
+    "dimensions_snapshot": {
+      "coverage": {
+        "line_percent": 68.0
+      }
+    },
+    "finding_counts": {
+      "blocker": 0,
+      "high": 1,
+      "low": 0,
+      "medium": 0
+    },
+    "generated_at": "2026-08-05T09:00:00Z",
+    "outcome": "informational",
+    "profile": "standard",
+    "run_dir": ".quality-audit/20260805T090000Z",
+    "scope": "repository"
+  },
+  "findings_timeline": [
+    {
+      "category": "security",
+      "confidence": "medium",
+      "file": "app.py",
+      "generated_at": "2026-08-05T09:00:00Z",
+      "line": 1,
+      "review_status": "confirmed",
+      "rule_id": "security.shell",
+      "run_dir": ".quality-audit/20260805T090000Z",
+      "sample_evidence": "match",
+      "severity": "high",
+      "tool": "semgrep"
+    }
+  ],
+  "generated_at": "2026-08-14T17:00:00Z",
+  "limitations": [
+    "1 of 2 runs have no review-ledger.json; their findings are excluded from review ratios.",
+    "No plan.json supplied; per-tool codebase coverage is not computable."
+  ],
+  "repository": "stats-history",
+  "review": {
+    "agent_llm_only_findings": {
+      "confirmation_rate": null,
+      "confirmation_rate_ci95": null,
+      "confirmed": 0,
+      "dismissed": 0,
+      "false_positive_rate": null,
+      "false_positive_rate_ci95": null,
+      "reviewed": 0,
+      "sample_size_warning": true
+    },
+    "decisions_considered": 1,
+    "note": "No single reliability score is produced; each ratio above is reported with its raw confirmed/dismissed counts and a 95% Wilson confidence interval. Ratios below the minimum sample size are null with sample_size_warning=true rather than a misleading 100%/0%.",
+    "runs_with_ledger": 1,
+    "runs_without_ledger": 1,
+    "tool_findings": {
+      "by_tool": {
+        "semgrep": {
+          "confirmation_rate": 1.0,
+          "confirmation_rate_ci95": [
+            0.2065,
+            1.0
+          ],
+          "confirmed": 1,
+          "dismissed": 0,
+          "false_positive_rate": 0.0,
+          "false_positive_rate_ci95": [
+            0.0,
+            0.7935
+          ],
+          "reviewed": 1,
+          "sample_size_warning": false
+        }
+      },
+      "confirmation_rate": 1.0,
+      "confirmation_rate_ci95": [
+        0.2065,
+        1.0
+      ],
+      "confirmed": 1,
+      "dismissed": 0,
+      "false_positive_rate": 0.0,
+      "false_positive_rate_ci95": [
+        0.0,
+        0.7935
+      ],
+      "reviewed": 1,
+      "sample_size_warning": false
+    },
+    "unreviewed_findings": {
+      "count": 0
+    }
+  },
+  "root": "<root>",
+  "schema_version": "1.0.0",
+  "source_runs": [
+    {
+      "dir": ".quality-audit/20260801T090000Z",
+      "generated_at": "2026-08-01T09:00:00Z",
+      "has_ledger": false,
+      "outcome": "informational",
+      "profile": "standard"
+    },
+    {
+      "dir": ".quality-audit/20260805T090000Z",
+      "generated_at": "2026-08-05T09:00:00Z",
+      "has_ledger": true,
+      "outcome": "informational",
+      "profile": "standard"
+    }
+  ],
+  "source_runs_considered": 2,
+  "trends": {
+    "dimensions": {
+      "coverage.line_percent": {
+        "direction": "insufficient_data",
+        "max": 68.0,
+        "mean": 64.0,
+        "min": 60.0,
+        "n": 2,
+        "series": [
+          {
+            "generated_at": "2026-08-01T09:00:00Z",
+            "value": 60.0
+          },
+          {
+            "generated_at": "2026-08-05T09:00:00Z",
+            "value": 68.0
+          }
+        ],
+        "slope_per_day": 2.0,
+        "slope_standard_error": null,
+        "stdev": 5.6569
+      }
+    },
+    "finding_counts": {
+      "blocker": {
+        "direction": "insufficient_data",
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "n": 2,
+        "series": [
+          {
+            "generated_at": "2026-08-01T09:00:00Z",
+            "value": 0.0
+          },
+          {
+            "generated_at": "2026-08-05T09:00:00Z",
+            "value": 0.0
+          }
+        ],
+        "slope_per_day": 0.0,
+        "slope_standard_error": null,
+        "stdev": 0.0
+      },
+      "high": {
+        "direction": "insufficient_data",
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "n": 2,
+        "series": [
+          {
+            "generated_at": "2026-08-01T09:00:00Z",
+            "value": 1.0
+          },
+          {
+            "generated_at": "2026-08-05T09:00:00Z",
+            "value": 1.0
+          }
+        ],
+        "slope_per_day": 0.0,
+        "slope_standard_error": null,
+        "stdev": 0.0
+      },
+      "low": {
+        "direction": "insufficient_data",
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "n": 2,
+        "series": [
+          {
+            "generated_at": "2026-08-01T09:00:00Z",
+            "value": 0.0
+          },
+          {
+            "generated_at": "2026-08-05T09:00:00Z",
+            "value": 0.0
+          }
+        ],
+        "slope_per_day": 0.0,
+        "slope_standard_error": null,
+        "stdev": 0.0
+      },
+      "medium": {
+        "direction": "insufficient_data",
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "n": 2,
+        "series": [
+          {
+            "generated_at": "2026-08-01T09:00:00Z",
+            "value": 0.0
+          },
+          {
+            "generated_at": "2026-08-05T09:00:00Z",
+            "value": 0.0
+          }
+        ],
+        "slope_per_day": 0.0,
+        "slope_standard_error": null,
+        "stdev": 0.0
+      }
+    }
+  }
+}

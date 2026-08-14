@@ -1,6 +1,6 @@
 ---
 name: programming-best-practices
-description: Audit and improve software correctness, maintainability, readability, test quality, architecture, dependencies, security, and performance using repository-native conventions and instrumented evidence. Use for code-quality audits, code reviews, refactoring requests, best-practice checks, test generation or evaluation, coverage and mutation analysis, security review, performance audits and optimization work (profiling, benchmarking, bundle size, regression against a recorded baseline), static-analysis orchestration, and requests to fix quality findings across Java/JVM, Python, JavaScript/TypeScript, .NET, Go, Rust, or C/C++ repositories.
+description: Audit and improve software correctness, maintainability, readability, test quality, architecture, dependencies, security, and performance using repository-native conventions and instrumented evidence. Use for code-quality audits, code reviews, refactoring requests, best-practice checks, test generation or evaluation, coverage and mutation analysis, security review, performance audits and optimization work (profiling, benchmarking, bundle size, regression against a recorded baseline), static-analysis orchestration, cross-run statistics and trend analysis, tool compliance/reliability and false-positive or hallucination-rate reporting, and requests to fix quality findings across Java/JVM, Python, JavaScript/TypeScript, .NET, Go, Rust, or C/C++ repositories.
 ---
 
 # Programming Best Practices
@@ -34,6 +34,7 @@ Use instrumented evidence before heuristic opinion. Treat unavailable, skipped, 
 8. **Prioritize.** Use `blocker`, `high`, `medium`, or `low` severity and independent `high`, `medium`, or `low` confidence. Prefer tool or specification evidence over LLM inference.
 9. **Fix only when authorized.** Make local, reviewable changes; add behavior-focused tests; run the narrow checks first and the relevant broader checks afterward.
 10. **Build and render.** Run `python scripts/build_report.py <execution.json> --output-dir <new-directory>`, adding semantic findings or external fragments when applicable. Produce Markdown, normalized JSON, and SARIF without overwriting previous results.
+11. **Aggregate statistics (optional).** After at least one report exists, run `python scripts/build_stats.py --root <repo> --output-dir <new-directory>` to aggregate tool-compliance, review, and trend statistics across `.quality-audit/` history. This step only reads prior reports; it never re-executes a tool.
 
 ## Reference routing
 
@@ -46,6 +47,7 @@ Use instrumented evidence before heuristic opinion. Treat unavailable, skipped, 
 - Read [automation.md](references/automation.md) before planning, executing, normalizing, installing tools, or generating tests.
 - Read [tooling-matrix.md](references/tooling-matrix.md) for stack-specific commands and optional analyzers.
 - Read [reporting.md](references/reporting.md) before producing or merging findings. Validate against [audit-result.schema.json](references/audit-result.schema.json).
+- Read [statistics.md](references/statistics.md) before building, aggregating, or interpreting cross-run statistics, review ratios, or trend charts. Validate `stats.json` against [stats-result.schema.json](references/stats-result.schema.json) and `review-ledger.json` against [review-ledger.schema.json](references/review-ledger.schema.json).
 
 ## Review rules
 

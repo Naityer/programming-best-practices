@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/programming-best-practices/stats-result.schema.json",
+  "title": "Programming Best Practices Statistics Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "generated_at", "repository", "root", "source_runs_considered",
+    "source_runs", "current_run", "findings_timeline", "by_tool", "by_category",
+    "review", "trends", "anomalies", "limitations"
+  ],
+  "$defs": {
+    "rate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewed", "confirmed", "dismissed", "sample_size_warning"],
+      "properties": {
+        "reviewed": {"type": "integer", "minimum": 0},
+        "confirmed": {"type": "integer", "minimum": 0},
+        "dismissed": {"type": "integer", "minimum": 0},
+        "confirmation_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "false_positive_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "confirmation_rate_ci95": {
+          "type": ["array", "null"], "minItems": 2, "maxItems": 2,
+          "items": {"type": "number", "minimum": 0, "maximum": 1}
+        },
+        "false_positive_rate_ci95": {
+          "type": ["array", "null"], "minItems": 2, "maxItems": 2,
+          "items": {"type": "number", "minimum": 0, "maximum": 1}
+        },
+        "sample_size_warning": {"type": "boolean"},
+        "by_tool": {
+          "type": "object",
+          "additionalProperties": {"$ref": "#/$defs/rate"}
+        }
+      }
+    },
+    "series": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["series", "n", "direction"],
+      "properties": {
+        "series": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "generated_at": {"type": ["string", "null"]},
+              "value": {"type": "number"}
+            }
+          }
+        },
+        "n": {"type": "integer", "minimum": 0},
+        "mean": {"type": ["number", "null"]},
+        "stdev": {"type": ["number", "null"]},
+        "min": {"type": ["number", "null"]},
+        "max": {"type": ["number", "null"]},
+        "slope_per_day": {"type": ["number", "null"]},
+        "slope_standard_error": {"type": ["number", "null"]},
+        "direction": {
+          "enum": ["improving", "worsening", "not_distinguishable_from_noise", "insufficient_data", "unknown_polarity"]
+        }
+      }
+    }
+  },
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "repository": {"type": "string", "minLength": 1},
+    "root": {"type": "string", "minLength": 1},
+    "source_runs_considered": {"type": "integer", "minimum": 0},
+    "source_runs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "dir": {"type": "string"},
+          "generated_at": {"type": ["string", "null"]},
+          "profile": {"type": ["string", "null"]},
+          "outcome": {"type": ["string", "null"]},
+          "has_ledger": {"type": "boolean"}
+        }
+      }
+    },
+    "current_run": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "run_dir": {"type": "string"},
+        "generated_at": {"type": ["string", "null"]},
+        "profile": {"type": ["string", "null"]},
+        "scope": {"type": ["string", "null"]},
+        "outcome": {"type": ["string", "null"]},
+        "finding_counts": {"type": "object"},
+        "dimensions_snapshot": {"type": "object"}
+      }
+    },
+    "findings_timeline": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "generated_at": {"type": ["string", "null"]},
+          "run_dir": {"type": "string"},
+          "tool": {"type": "string"},
+          "rule_id": {"type": ["string", "null"]},
+          "category": {"type": ["string", "null"]},
+          "severity": {"type": ["string", "null"]},
+          "confidence": {"type": ["string", "null"]},
+          "file": {"type": ["string", "null"]},
+          "line": {"type": ["integer", "null"]},
+          "review_status": {"enum": ["confirmed", "dismissed", "unreviewed"]},
+          "sample_evidence": {"type": "string"}
+        }
+      }
+    },
+    "by_tool": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "runs_seen": {"type": "integer", "minimum": 0},
+          "status_histogram": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+          "measurement_domain": {"type": ["string", "null"]},
+          "measurement_domain_source": {"enum": ["static-registry", "not-registered"]},
+          "category": {"type": ["string", "null"]},
+          "gate": {"type": ["boolean", "null"]},
+          "avg_duration_ms": {"type": ["number", "null"]},
+          "duration_ms_stddev": {"type": ["number", "null"]},
+          "reproducibility": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "last_command": {"type": ["string", "null"]},
+              "last_version": {"type": ["string", "null"]},
+              "last_run": {"type": ["string", "null"]}
+            }
+          },
+          "coverage_of_codebase": {
+            "type": "object",
+            "properties": {
+              "computable": {"type": "boolean"},
+              "reason": {"type": "string"},
+              "effective_scope": {"type": "string"}
+            }
+          },
+          "findings_total": {"type": "integer", "minimum": 0},
+          "review": {"$ref": "#/$defs/rate"}
+        }
+      }
+    },
+    "by_category": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "findings_total": {"type": "integer", "minimum": 0},
+          "tools": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runs_with_ledger", "runs_without_ledger", "decisions_considered", "tool_findings", "agent_llm_only_findings", "unreviewed_findings", "note"],
+      "properties": {
+        "runs_with_ledger": {"type": "integer", "minimum": 0},
+        "runs_without_ledger": {"type": "integer", "minimum": 0},
+        "decisions_considered": {"type": "integer", "minimum": 0},
+        "tool_findings": {"$ref": "#/$defs/rate"},
+        "agent_llm_only_findings": {"$ref": "#/$defs/rate"},
+        "unreviewed_findings": {
+          "type": "object", "additionalProperties": false,
+          "properties": {"count": {"type": "integer", "minimum": 0}}
+        },
+        "note": {"type": "string"}
+      }
+    },
+    "trends": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "finding_counts": {"type": "object", "additionalProperties": {"$ref": "#/$defs/series"}},
+        "dimensions": {"type": "object", "additionalProperties": {"$ref": "#/$defs/series"}}
+      }
+    },
+    "anomalies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "location_conflicts": {"type": "array"},
+        "stale_baselines": {"type": "array"},
+        "decision_reversals": {"type": "array"},
+        "findings_on_removed_code": {"type": "array"}
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  }
+}

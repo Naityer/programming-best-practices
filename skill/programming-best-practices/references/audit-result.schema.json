@@ -55,7 +55,9 @@
           "report": {"type": "string"},
           "reason": {"type": "string"},
           "gate": {"type": "boolean"},
-          "effective_scope": {"type": "string", "minLength": 1}
+          "effective_scope": {"type": "string", "minLength": 1},
+          "category": {"type": "string", "minLength": 1},
+          "output_format": {"type": "string", "minLength": 1}
         }
       }
     },

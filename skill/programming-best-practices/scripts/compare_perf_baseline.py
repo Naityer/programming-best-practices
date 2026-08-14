@@ -67,15 +67,28 @@ def _severity(ratio: float) -> str:
     return "low"
 
 
+def _filtered_leaves(node: Any) -> dict[str, float]:
+    """`_numeric_leaves` sin los contadores/identificadores de `IGNORED_LEAVES`.
+
+    Se usa igual para la línea base y para la medida actual, para que comparar
+    sus claves (p.ej. para detectar métricas obsoletas) compare lo mismo en
+    ambos lados.
+    """
+    return {
+        path: value
+        for path, value in _numeric_leaves(node)
+        if not any(path.rsplit(".", 1)[-1] == leaf for leaf in IGNORED_LEAVES)
+    }
+
+
 def compare(current: dict[str, Any], baseline: dict[str, Any], tolerance: float) -> dict[str, Any]:
-    base_values = dict(_numeric_leaves(baseline))
+    base_values = _filtered_leaves(baseline)
+    current_values = _filtered_leaves(current)
     findings: list[dict[str, Any]] = []
     regressions: dict[str, Any] = {}
     improvements: dict[str, Any] = {}
 
-    for path, value in _numeric_leaves(current):
-        if any(path.rsplit(".", 1)[-1] == leaf for leaf in IGNORED_LEAVES):
-            continue
+    for path, value in current_values.items():
         before = base_values.get(path)
         if before is None or before == 0:
             continue
@@ -100,11 +113,18 @@ def compare(current: dict[str, Any], baseline: dict[str, Any], tolerance: float)
                 # informe pasa después por revisión semántica.
                 "confidence": "high",
                 "locations": [{"file": path, "line": 1}],
-                "evidence": {
+                # Lista, no diccionario suelto: `audit-result.schema.json` exige
+                # `evidence` como array no vacío, y `render_report._normalize`
+                # ordena sobre `finding["evidence"]` con `sorted(...)`. Un dict
+                # aquí rompía todo el render en cuanto este fragmento se pasaba
+                # a `build_report.py --fragment`.
+                "evidence": [{
                     "source_type": "tool",
                     "source": "compare-perf-baseline",
                     "message": f"{path}: {before:g} → {value:g} ({ratio:.2f}× peor)",
-                },
+                    "metric": path,
+                    "value": value,
+                }],
                 "impact": (
                     f"La medida empeoró un {(ratio - 1) * 100:.0f}% respecto a la línea base "
                     f"registrada en el repositorio."
@@ -118,6 +138,17 @@ def compare(current: dict[str, Any], baseline: dict[str, Any], tolerance: float)
         elif ratio < 1 - tolerance:
             improvements[path] = {"baseline": before, "current": value, "ratio": round(ratio, 3)}
 
+    # Métricas que la línea base registraba y la medida actual ya no reporta:
+    # una herramienta cambió de formato, un objetivo se eliminó, o la medida se
+    # dejó de recoger. No es una regresión (no hay valor que comparar) ni algo
+    # que ignorar en silencio: es la señal de "esto puede estar desactualizado"
+    # que `stats.json` necesita para su sección `anomalies.stale_baselines`.
+    stale_metrics = sorted(set(base_values) - set(current_values))
+    limitations = [
+        f"{path}: presente en la línea base ({base_values[path]:g}) pero ausente de la medida actual."
+        for path in stale_metrics
+    ]
+
     return {
         "schema_version": "1.0.0",
         "tool": "compare-perf-baseline",
@@ -129,9 +160,10 @@ def compare(current: dict[str, Any], baseline: dict[str, Any], tolerance: float)
                 "improvements": len(improvements),
                 "tolerance": tolerance,
                 "detail": {"regressions": regressions, "improvements": improvements},
+                "stale_metrics": stale_metrics,
             }
         },
-        "limitations": [],
+        "limitations": limitations,
     }
 
 

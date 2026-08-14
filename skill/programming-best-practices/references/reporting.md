@@ -16,7 +16,8 @@ Write each run to a new `.quality-audit/<timestamp>/` directory:
 
 - `report.json`: normalized canonical result;
 - `report.md`: human-readable report;
-- `report.sarif`: SARIF 2.1.0 for code-scanning consumers.
+- `report.sarif`: SARIF 2.1.0 for code-scanning consumers;
+- `review-ledger.json`: written only when `--semantic-review` was supplied to `build_report.py` (even with zero decisions) — the structured confirm/dismiss decisions, kept as a sibling file rather than a report field so `report.json`'s schema stays closed. See [statistics.md](statistics.md) for how it feeds cross-run review ratios.
 
 Do not overwrite a prior run or edit `.gitignore` automatically. Validate the input against `audit-result.schema.json` before rendering.
 

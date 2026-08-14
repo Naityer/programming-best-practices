@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/programming-best-practices/review-ledger.schema.json",
+  "title": "Programming Best Practices Semantic Review Ledger",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "repository", "generated_at", "decisions"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "repository": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["decision_id", "action", "reason", "matched", "unmatched"],
+        "properties": {
+          "decision_id": {"type": "string", "minLength": 1},
+          "action": {"enum": ["confirm", "dismiss"]},
+          "reason": {"type": "string"},
+          "reviewed_at": {"type": ["string", "null"]},
+          "reviewer": {"type": "string"},
+          "overrides": {"type": ["object", "null"]},
+          "unmatched": {"type": "boolean"},
+          "matched": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "fingerprint": {"type": ["string", "null"]},
+                "rule_id": {"type": ["string", "null"]},
+                "category": {"type": ["string", "null"]},
+                "severity": {"type": ["string", "null"]},
+                "confidence": {"type": ["string", "null"]},
+                "locations": {"type": ["array", "null"]},
+                "evidence_source_types": {
+                  "type": "array",
+                  "items": {"enum": ["tool", "specification", "property", "llm"]}
+                },
+                "primary_source": {"type": ["string", "null"]},
+                "primary_message": {"type": ["string", "null"]}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

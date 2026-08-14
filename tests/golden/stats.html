@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Statistics: stats-history</title>
+<style>
+:root { color-scheme: light dark; --bg:#ffffff; --fg:#1b1f24; --muted:#6b7280; --border:#e2e5e9; --accent:#4f7cff; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --fg:#e6e8eb; --muted:#9aa3af; --border:#2a2e35; } }
+body { background:var(--bg); color:var(--fg); font-family:-apple-system,Segoe UI,Roboto,sans-serif; margin:0; padding:24px; }
+h1,h2 { border-bottom:1px solid var(--border); padding-bottom:6px; }
+table { border-collapse:collapse; width:100%; margin:12px 0 24px; font-size:14px; }
+th,td { border:1px solid var(--border); padding:6px 10px; text-align:left; }
+th { background:transparent; color:var(--muted); font-weight:600; }
+caption { text-align:left; color:var(--muted); font-size:12px; margin-bottom:6px; caption-side:top; }
+.chart-title { font-size:14px; fill:currentColor; }
+.axis-label { font-size:11px; fill:var(--muted); }
+.value-label { font-size:11px; fill:currentColor; }
+.legend { font-size:12px; }
+.bar { fill:var(--accent); }
+.empty { fill:var(--muted); font-size:13px; }
+.note { color:var(--muted); font-size:13px; }
+svg { max-width:100%; height:auto; display:block; margin:12px 0 24px; }
+</style>
+</head>
+<body>
+<h1>Statistics: stats-history</h1>
+<p class="note">Root: <code>&lt;root&gt;</code> · Generated: 2026-08-14T17:00:00Z ·
+Source runs considered: 2</p>
+
+<h2>Current run</h2>
+<p>Run <code>.quality-audit/20260805T090000Z</code> · 2026-08-05T09:00:00Z ·
+profile standard · scope repository · outcome <strong>informational</strong></p>
+<svg viewBox="0 0 640 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Current findings by severity"><text x="320.0" y="20" text-anchor="middle" class="chart-title">Current findings by severity</text><rect x="44.0" y="280.0" width="130.5" height="0.0" class="bar"><title>blocker: 0</title></rect><text x="109.2" y="274.0" text-anchor="middle" class="value-label">0</text><text x="109.2" y="292.0" text-anchor="middle" class="axis-label">blocker</text><rect x="184.5" y="64.0" width="130.5" height="216.0" class="bar"><title>high: 1</title></rect><text x="249.8" y="58.0" text-anchor="middle" class="value-label">1</text><text x="249.8" y="292.0" text-anchor="middle" class="axis-label">high</text><rect x="325.0" y="280.0" width="130.5" height="0.0" class="bar"><title>low: 0</title></rect><text x="390.2" y="274.0" text-anchor="middle" class="value-label">0</text><text x="390.2" y="292.0" text-anchor="middle" class="axis-label">low</text><rect x="465.5" y="280.0" width="130.5" height="0.0" class="bar"><title>medium: 0</title></rect><text x="530.8" y="274.0" text-anchor="middle" class="value-label">0</text><text x="530.8" y="292.0" text-anchor="middle" class="axis-label">medium</text></svg>
+
+<h2>Review — confirm/dismiss ratios</h2>
+<p class="note">No single reliability score is produced; each ratio above is reported with its raw confirmed/dismissed counts and a 95% Wilson confidence interval. Ratios below the minimum sample size are null with sample_size_warning=true rather than a misleading 100%/0%.</p>
+<table>
+<thead><tr><th>Group</th><th>Reviewed</th><th>Confirmed</th><th>Dismissed</th>
+<th>Confirmation rate (95% CI)</th><th>False-positive / hallucination rate (95% CI)</th></tr></thead>
+<tbody>
+<tr><td>Tool-sourced findings</td><td>1</td>
+<td>1</td><td>0</td>
+<td>100.0% (20.6%–100.0%)</td>
+<td>0.0% (0.0%–79.3%)</td></tr>
+<tr><td>Agent LLM-only findings</td><td>0</td>
+<td>0</td><td>0</td>
+<td>insufficient sample</td>
+<td>insufficient sample</td></tr>
+</tbody>
+</table>
+
+<h2>Findings by tool</h2>
+<svg viewBox="0 0 640 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Findings by tool (considered scope)"><text x="320.0" y="20" text-anchor="middle" class="chart-title">Findings by tool (considered scope)</text><rect x="44.0" y="64.0" width="552.0" height="216.0" class="bar"><title>semgrep: 1</title></rect><text x="320.0" y="58.0" text-anchor="middle" class="value-label">1</text><text x="320.0" y="292.0" text-anchor="middle" class="axis-label">semgrep</text></svg>
+<table class="contingency"><caption>Tool × review outcome. Not a full confusion matrix: there is no evidence for issues a tool never flagged, so true/false negatives are not shown.</caption><thead><tr><th>Tool</th><th>confirmed</th><th>dismissed</th><th>unreviewed</th></tr></thead><tbody><tr><th>semgrep</th><td style="background:hsl(220,70%,56%)">1</td><td style="background:hsl(220,70%,96%)">0</td><td style="background:hsl(220,70%,96%)">0</td></tr></tbody></table>
+
+<h2>By tool</h2>
+<table>
+<thead><tr><th>Tool</th><th>Runs seen</th><th>Findings</th><th>Reviewed</th><th>Confirmation rate</th>
+<th>Avg duration (ms)</th><th>Measures</th></tr></thead>
+<tbody><tr><td>universal.semgrep (semgrep)</td><td>2</td><td>2</td><td>1</td><td>100.0% (20.6%–100.0%)</td><td>110</td><td>Static pattern rules matched against source files in the configured ruleset.</td></tr></tbody>
+</table>
+
+<h2>Trends</h2>
+<svg viewBox="0 0 640 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Finding counts over time"><text x="320.0" y="20" text-anchor="middle" class="chart-title">Finding counts over time</text><path d="M44.0,300.0 L596.0,300.0" fill="none" stroke="#4f7cff" stroke-width="2"/><circle cx="44.0" cy="300.0" r="3" fill="#4f7cff"/><circle cx="596.0" cy="300.0" r="3" fill="#4f7cff"/><text x="44.0" y="38.0" class="legend" fill="#4f7cff">blocker</text><path d="M44.0,64.0 L596.0,64.0" fill="none" stroke="#e0665e" stroke-width="2"/><circle cx="44.0" cy="64.0" r="3" fill="#e0665e"/><circle cx="596.0" cy="64.0" r="3" fill="#e0665e"/><text x="44.0" y="52.0" class="legend" fill="#e0665e">high</text><path d="M44.0,300.0 L596.0,300.0" fill="none" stroke="#3fae6b" stroke-width="2"/><circle cx="44.0" cy="300.0" r="3" fill="#3fae6b"/><circle cx="596.0" cy="300.0" r="3" fill="#3fae6b"/><text x="44.0" y="66.0" class="legend" fill="#3fae6b">low</text><path d="M44.0,300.0 L596.0,300.0" fill="none" stroke="#c98a2c" stroke-width="2"/><circle cx="44.0" cy="300.0" r="3" fill="#c98a2c"/><circle cx="596.0" cy="300.0" r="3" fill="#c98a2c"/><text x="44.0" y="80.0" class="legend" fill="#c98a2c">medium</text></svg>
+<table>
+<thead><tr><th>Metric</th><th>n</th><th>Mean</th><th>Stdev</th><th>Slope/day</th><th>Direction</th></tr></thead>
+<tbody><tr><td>finding_counts.blocker</td><td>2</td><td>0</td><td>0</td><td>0</td><td>insufficient_data</td></tr><tr><td>finding_counts.high</td><td>2</td><td>1</td><td>0</td><td>0</td><td>insufficient_data</td></tr><tr><td>finding_counts.low</td><td>2</td><td>0</td><td>0</td><td>0</td><td>insufficient_data</td></tr><tr><td>finding_counts.medium</td><td>2</td><td>0</td><td>0</td><td>0</td><td>insufficient_data</td></tr><tr><td>dimensions.coverage.line_percent</td><td>2</td><td>64</td><td>5.6569</td><td>2</td><td>insufficient_data</td></tr></tbody>
+</table>
+
+<h2>Limitations</h2>
+<ul><li>1 of 2 runs have no review-ledger.json; their findings are excluded from review ratios.</li><li>No plan.json supplied; per-tool codebase coverage is not computable.</li></ul>
+</body>
+</html>

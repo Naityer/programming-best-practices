@@ -160,6 +160,34 @@ class ComparePerfBaselineTests(unittest.TestCase):
             sys.argv = ["compare_perf_baseline.py", str(current)]
             self.assertEqual(compare_perf_baseline.main(), 0)
 
+    def test_finding_evidence_is_a_list_not_a_dict(self) -> None:
+        """Regresión: un `evidence` como diccionario suelto rompía
+        `build_report.py --fragment` en cuanto alguien lo usaba, porque
+        `audit-result.schema.json` exige un array no vacío."""
+        result = compare_perf_baseline.compare(
+            {"total_bytes": 2000}, {"total_bytes": 1000}, 0.10,
+        )
+        evidence = result["findings"][0]["evidence"]
+        self.assertIsInstance(evidence, list)
+        self.assertEqual(1, len(evidence))
+        self.assertEqual("tool", evidence[0]["source_type"])
+        self.assertEqual("total_bytes", evidence[0]["metric"])
+        self.assertEqual(2000.0, evidence[0]["value"])
+
+    def test_stale_metrics_reports_paths_present_in_baseline_but_absent_from_current(self) -> None:
+        result = compare_perf_baseline.compare(
+            {"bundle": {"total_bytes": 1000}},
+            {"bundle": {"total_bytes": 1000}, "old_probe": {"value": 5}},
+            0.10,
+        )
+        self.assertEqual(["old_probe.value"], result["dimensions"]["performance"]["stale_metrics"])
+        self.assertTrue(any("old_probe.value" in item for item in result["limitations"]))
+
+    def test_stale_metrics_is_empty_when_every_baseline_metric_still_appears(self) -> None:
+        result = compare_perf_baseline.compare({"load_ms": 100}, {"load_ms": 90}, 0.10)
+        self.assertEqual([], result["dimensions"]["performance"]["stale_metrics"])
+        self.assertEqual([], result["limitations"])
+
 
 if __name__ == "__main__":
     unittest.main()

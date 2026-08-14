@@ -86,7 +86,7 @@ def validate_report(data: Any) -> list[str]:
     if not isinstance(tools, list):
         errors.append("$.tools: expected array")
     else:
-        tool_fields = {"name", "status", "command", "version", "exit_code", "duration_ms", "report", "reason", "gate", "effective_scope"}
+        tool_fields = {"name", "status", "command", "version", "exit_code", "duration_ms", "report", "reason", "gate", "effective_scope", "category", "output_format"}
         for index, tool in enumerate(tools):
             path = f"$.tools[{index}]"
             if not isinstance(tool, dict):
@@ -96,6 +96,10 @@ def validate_report(data: Any) -> list[str]:
             _unknown(tool, tool_fields, path, errors)
             _nonempty_string(tool.get("name"), f"{path}.name", errors)
             _enum(tool.get("status"), TOOL_STATUSES, f"{path}.status", errors)
+            if "category" in tool:
+                _nonempty_string(tool["category"], f"{path}.category", errors)
+            if "output_format" in tool:
+                _nonempty_string(tool["output_format"], f"{path}.output_format", errors)
             if "gate" in tool and not isinstance(tool["gate"], bool):
                 errors.append(f"{path}.gate: expected boolean")
             if "effective_scope" in tool:
