@@ -38,8 +38,12 @@ Use instrumented evidence before heuristic opinion. Treat unavailable, skipped, 
 
 ## Reference routing
 
+The responsibility map is indexed in [core](references/core/README.md) and [audit](references/audit/README.md); stable root links remain supported.
+
 - Read [core-principles.md](references/core-principles.md) for priorities, conventions, SOLID, comments, errors, and anti-overengineering rules.
 - Read [code-quality.md](references/code-quality.md) when assessing smells, refactorings, coupling, cohesion, or design patterns.
+- Read [design-patterns/detection-rules.md](references/design-patterns/detection-rules.md) when evaluating architecture, design patterns, pattern misuse, refactoring opportunities, coupling, or object collaboration.
+- Read [algorithms/README.md](references/algorithms/README.md) first when recognizing algorithms, assessing complexity, correlating profiling/security evidence, or ranking safer alternatives; it routes to the catalog and artifact schema.
 - Read [testing.md](references/testing.md) for test levels, coverage, mutation testing, test generation, and oracle classification.
 - Read [security.md](references/security.md) for untrusted input, authorization, secrets, dependencies, logging, files, URLs, concurrency, or sensitive data.
 - Read [performance.md](references/performance.md) when the request is about speed, latency, memory, bundle size, profiling, benchmarking, or a performance regression.

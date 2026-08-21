@@ -120,6 +120,110 @@ example.go:3.1,4.1 1 0
         finally:
             directory.cleanup()
 
+class DesignPatternsParserTests(unittest.TestCase):
+    """spec §19: detected/partial -> only dimensions; ambiguous -> dimensions
+    + a limitation asking for human review; misimplemented/refactor-opportunity
+    -> findings."""
+
+    def _report(self, patterns: list[dict], limitations: list[str] | None = None) -> dict:
+        return {
+            "schema_version": "1.0.0", "files_scanned": 3, "languages": ["python"],
+            "patterns": patterns, "limitations": limitations or [],
+        }
+
+    def test_detected_and_partial_never_become_findings(self) -> None:
+        data = self._report([
+            {"pattern_id": "adapter", "status": "detected", "confidence": "medium",
+             "primary_location": {"file": "a.py", "line": 5}, "roles": {"target": "T", "adapter": "A", "adaptee": "D"},
+             "evidence": [], "contradictions": []},
+            {"pattern_id": "builder", "status": "partial", "confidence": "low",
+             "primary_location": {"file": "b.py", "line": 9}, "roles": {"builder": "B"},
+             "evidence": [], "contradictions": []},
+        ])
+        findings, dimensions, limitations = normalize_tool_output.parse_design_patterns(data, None)
+        self.assertEqual([], findings)
+        self.assertEqual([], limitations)
+        design_patterns = dimensions["design_patterns"]
+        self.assertEqual(1, design_patterns["detected"])
+        self.assertEqual(1, design_patterns["partial"])
+        self.assertEqual({"structural": 1, "creational": 1}, design_patterns["by_family"])
+        self.assertEqual(2, len(design_patterns["patterns"]))
+
+    def test_ambiguous_becomes_a_limitation_not_a_finding(self) -> None:
+        data = self._report([{
+            "pattern_id": "decorator", "status": "ambiguous", "confidence": "low",
+            "primary_location": {"file": "svc.py", "line": 12},
+            "roles": {"component": "Service", "concrete_component": "RealService", "decorator": "CachingProxy"},
+            "evidence": [], "contradictions": [{"pattern_id": "proxy", "reason": "same structure"}],
+        }])
+        findings, dimensions, limitations = normalize_tool_output.parse_design_patterns(data, None)
+        self.assertEqual([], findings)
+        self.assertEqual(1, dimensions["design_patterns"]["ambiguous"])
+        self.assertEqual(1, len(limitations))
+        self.assertIn("proxy", limitations[0])
+        self.assertIn("human review", limitations[0])
+
+    def test_misimplemented_becomes_a_medium_severity_quality_finding(self) -> None:
+        data = self._report([{
+            "pattern_id": "singleton", "status": "misimplemented", "confidence": "medium",
+            "primary_location": {"file": "registry.py", "line": 20}, "roles": {"singleton": "Registry"},
+            "evidence": [{"kind": "hard", "description": "the cache is not guarded against concurrent access"}],
+            "contradictions": [],
+        }])
+        findings, dimensions, _ = normalize_tool_output.parse_design_patterns(data, None)
+        self.assertEqual(1, len(findings))
+        finding = findings[0]
+        self.assertEqual("pbp.pattern.singleton.misimplemented", finding["rule_id"])
+        self.assertEqual("quality", finding["category"])
+        self.assertEqual("medium", finding["severity"])
+        self.assertEqual("medium", finding["confidence"])
+        self.assertEqual("registry.py", finding["locations"][0]["file"])
+        self.assertEqual(1, dimensions["design_patterns"]["misimplemented"])
+
+    def test_refactor_opportunity_becomes_a_low_severity_quality_finding(self) -> None:
+        data = self._report([{
+            "pattern_id": "strategy", "status": "refactor-opportunity", "confidence": "medium",
+            "primary_location": {"file": "calc.py", "line": 4},
+            "roles": {"discriminator_site_1": "Calculator.calculate", "discriminator_site_2": "Calculator.validate"},
+            "evidence": [{"kind": "hard", "description": "shared discriminator across 2 methods"}],
+            "contradictions": [],
+            "refactoring": {"smell": "repeated conditional dispatch", "candidate_pattern": "strategy",
+                             "sites": ["Calculator.calculate", "Calculator.validate"]},
+        }])
+        findings, dimensions, _ = normalize_tool_output.parse_design_patterns(data, None)
+        self.assertEqual(1, len(findings))
+        finding = findings[0]
+        self.assertEqual("pbp.pattern.strategy.opportunity", finding["rule_id"])
+        self.assertEqual("low", finding["severity"])
+        self.assertEqual(1, dimensions["design_patterns"]["refactor_opportunities"])
+
+    def test_a_pattern_with_no_evidence_still_produces_a_valid_finding(self) -> None:
+        data = self._report([{
+            "pattern_id": "adapter", "status": "misimplemented", "confidence": "low",
+            "primary_location": {"file": "a.py", "line": 1}, "roles": {}, "evidence": [], "contradictions": [],
+        }])
+        findings, _, _ = normalize_tool_output.parse_design_patterns(data, None)
+        self.assertEqual(1, len(findings))
+        self.assertTrue(findings[0]["impact"])
+        self.assertTrue(findings[0]["evidence"])
+
+    def test_full_pipeline_via_normalize(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        try:
+            path = Path(directory.name) / "design-patterns.json"
+            path.write_text(json.dumps(self._report([{
+                "pattern_id": "observer", "status": "detected", "confidence": "medium",
+                "primary_location": {"file": "bus.py", "line": 3},
+                "roles": {"subject": "EventBus", "observer": "Handler"},
+                "evidence": [], "contradictions": [],
+            }])), encoding="utf-8")
+            result = normalize_tool_output.normalize("design-patterns", path)
+            self.assertEqual([], result["findings"])
+            self.assertEqual(1, result["dimensions"]["design_patterns"]["detected"])
+        finally:
+            directory.cleanup()
+
+
 if __name__ == "__main__":
     unittest.main()
 

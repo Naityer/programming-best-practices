@@ -1,0 +1,26 @@
+name: quality
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-measure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Run complete regression suite
+        run: python -m unittest discover -s tests
+      - name: Enforce functional index above 80 percent
+        run: python skill/programming-best-practices/scripts/measure_design_pattern_functionality.py --output functional-index.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: design-pattern-functional-index
+          path: functional-index.json

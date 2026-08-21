@@ -1,0 +1,310 @@
+{
+  "schema_version": "1.0.0",
+  "patterns": [
+    {
+      "id": "factory_method",
+      "name": "Factory Method",
+      "family": "creational",
+      "roles": ["creator", "product"],
+      "required_relations": [
+        "creator CONTAINS a method that INSTANTIATES a product type",
+        "creator has >=2 subclasses/callers selecting different concrete products"
+      ],
+      "behavioral_signals": ["the creation method's return type is the abstract product, not the concrete one"],
+      "conflicts_with": ["abstract_factory"],
+      "opportunity_signal": "repeated selection among concrete classes at multiple call sites"
+    },
+    {
+      "id": "abstract_factory",
+      "name": "Abstract Factory",
+      "family": "creational",
+      "roles": ["abstract_factory", "concrete_factory", "abstract_product", "concrete_product"],
+      "required_relations": [
+        "concrete_factory IMPLEMENTS abstract_factory",
+        "abstract_factory CONTAINS >=2 creation methods returning different abstract_product families",
+        "each creation method INSTANTIATES a concrete_product matching the concrete_factory's family"
+      ],
+      "behavioral_signals": ["concrete factories are interchangeable at a single composition point"],
+      "conflicts_with": ["factory_method"],
+      "opportunity_signal": "families of related objects created through scattered conditionals"
+    },
+    {
+      "id": "builder",
+      "name": "Builder",
+      "family": "creational",
+      "roles": ["builder", "product"],
+      "required_relations": [
+        "builder CONTAINS >=2 methods that RETURNS the builder's own type (chaining)",
+        "builder CONTAINS a method that INSTANTIATES/RETURNS the product"
+      ],
+      "behavioral_signals": ["chained calls culminate in one terminal build()/create() call"],
+      "conflicts_with": [],
+      "opportunity_signal": "repeated complex construction with many optional parameters"
+    },
+    {
+      "id": "prototype",
+      "name": "Prototype",
+      "family": "creational",
+      "roles": ["prototype", "client"],
+      "required_relations": [
+        "prototype CONTAINS a method with a CLONES relation to itself"
+      ],
+      "behavioral_signals": ["clone copies internal state without re-running the constructor"],
+      "conflicts_with": [],
+      "opportunity_signal": "manual field-by-field copy of an existing instance repeated at call sites"
+    },
+    {
+      "id": "singleton",
+      "name": "Singleton",
+      "family": "creational",
+      "roles": ["singleton"],
+      "required_relations": [
+        "class CACHES its own single instance",
+        "an accessor CONTAINS the only path that INSTANTIATES the class"
+      ],
+      "behavioral_signals": ["repeated calls to the accessor return the same instance"],
+      "conflicts_with": [],
+      "opportunity_signal": "global mutable state reached through ad hoc module-level access"
+    },
+    {
+      "id": "adapter",
+      "name": "Adapter",
+      "family": "structural",
+      "roles": ["target", "adapter", "adaptee", "client"],
+      "required_relations": [
+        "adapter IMPLEMENTS target",
+        "adapter CONTAINS a reference to adaptee (CONTAINS/REFERENCES)",
+        "adapter DELEGATES_TO adaptee with a different method name/signature (translation)"
+      ],
+      "behavioral_signals": ["target.operation() call is translated before reaching adaptee.other_operation()"],
+      "conflicts_with": ["decorator", "proxy", "facade"],
+      "opportunity_signal": "repeated ad hoc conversion code between two incompatible APIs"
+    },
+    {
+      "id": "bridge",
+      "name": "Bridge",
+      "family": "structural",
+      "roles": ["abstraction", "implementor", "refined_abstraction", "concrete_implementor"],
+      "required_relations": [
+        "abstraction CONTAINS a reference to implementor (composition, not inheritance)",
+        "refined_abstraction INHERITS abstraction",
+        "concrete_implementor IMPLEMENTS implementor",
+        ">=2 independent variations exist on each side"
+      ],
+      "behavioral_signals": ["abstraction delegates the operation to implementor instead of implementing it"],
+      "conflicts_with": [],
+      "opportunity_signal": "combinatorial explosion of subclasses covering two independent dimensions"
+    },
+    {
+      "id": "composite",
+      "name": "Composite",
+      "family": "structural",
+      "roles": ["component", "leaf", "composite"],
+      "required_relations": [
+        "leaf IMPLEMENTS component",
+        "composite IMPLEMENTS component",
+        "composite CONTAINS a collection of component (including itself, recursively)"
+      ],
+      "behavioral_signals": ["composite's operation ITERATES its children and CALLS the same operation on each"],
+      "conflicts_with": [],
+      "opportunity_signal": "duplicated logic handling a single element and a group of elements separately"
+    },
+    {
+      "id": "decorator",
+      "name": "Decorator",
+      "family": "structural",
+      "roles": ["component", "concrete_component", "decorator"],
+      "required_relations": [
+        "decorator IMPLEMENTS component",
+        "decorator CONTAINS a reference to a wrapped component",
+        "decorator DELEGATES_TO the wrapped component with the SAME method name/signature",
+        "decorator adds behavior before/after the delegated call"
+      ],
+      "behavioral_signals": ["decorators are combinable/stackable around one another"],
+      "conflicts_with": ["adapter", "proxy"],
+      "opportunity_signal": "growing combinations of optional behaviors layered ad hoc"
+    },
+    {
+      "id": "facade",
+      "name": "Facade",
+      "family": "structural",
+      "roles": ["facade", "subsystem"],
+      "required_relations": [
+        "facade CONTAINS references to >=2 subsystem components",
+        "facade's methods CALLS across those subsystem components in a fixed sequence"
+      ],
+      "behavioral_signals": ["clients no longer call the subsystem components directly"],
+      "conflicts_with": ["adapter"],
+      "opportunity_signal": "the same subsystem orchestration sequence repeated at multiple call sites"
+    },
+    {
+      "id": "flyweight",
+      "name": "Flyweight",
+      "family": "structural",
+      "roles": ["flyweight", "flyweight_factory", "context"],
+      "required_relations": [
+        "flyweight_factory CACHES flyweight instances keyed by intrinsic state",
+        "context REFERENCES a shared flyweight instead of owning its own copy"
+      ],
+      "behavioral_signals": ["extrinsic state is passed as a parameter, never stored on the flyweight"],
+      "conflicts_with": [],
+      "opportunity_signal": "large duplicated intrinsic state across many instances (needs measured evidence before claiming a performance benefit — spec §20/§21)"
+    },
+    {
+      "id": "proxy",
+      "name": "Proxy",
+      "family": "structural",
+      "roles": ["subject", "real_subject", "proxy"],
+      "required_relations": [
+        "proxy IMPLEMENTS subject",
+        "proxy CONTAINS a reference to real_subject",
+        "proxy DELEGATES_TO real_subject with the SAME method name/signature",
+        "proxy adds an access/lifecycle concern (guard, lazy init, cache) around the delegated call"
+      ],
+      "behavioral_signals": ["the delegated call is conditionally short-circuited (access check, cache hit, lazy creation)"],
+      "conflicts_with": ["adapter", "decorator"],
+      "opportunity_signal": "repeated access-control, lazy-loading, or caching logic wrapping direct calls"
+    },
+    {
+      "id": "chain_of_responsibility",
+      "name": "Chain of Responsibility",
+      "family": "behavioral",
+      "roles": ["handler", "concrete_handler"],
+      "required_relations": [
+        "concrete_handler IMPLEMENTS/INHERITS handler",
+        "handler CONTAINS a reference to the next handler in the chain",
+        "concrete_handler's handling method CALLS the next handler when it does not resolve the request"
+      ],
+      "behavioral_signals": ["a request travels through more than one handler instance at runtime"],
+      "conflicts_with": [],
+      "opportunity_signal": "a sequential pipeline of conditional handling checks"
+    },
+    {
+      "id": "command",
+      "name": "Command",
+      "family": "behavioral",
+      "roles": ["command", "concrete_command", "invoker", "receiver"],
+      "required_relations": [
+        "concrete_command IMPLEMENTS command",
+        "concrete_command CONTAINS a reference to receiver",
+        "concrete_command's execute method DELEGATES_TO receiver",
+        "invoker CONTAINS/REFERENCES command without knowing the concrete type"
+      ],
+      "behavioral_signals": ["the invoker queues, logs, or undoes commands instead of calling receiver directly"],
+      "conflicts_with": [],
+      "opportunity_signal": "actions that need queueing, history, or undo but call their receiver directly today"
+    },
+    {
+      "id": "iterator",
+      "name": "Iterator",
+      "family": "behavioral",
+      "roles": ["iterator", "aggregate"],
+      "required_relations": [
+        "aggregate CONTAINS a method that RETURNS an iterator",
+        "iterator holds traversal state separate from the aggregate's own state"
+      ],
+      "behavioral_signals": ["traversal position survives across multiple calls without the aggregate exposing its internals"],
+      "conflicts_with": [],
+      "opportunity_signal": "repeated manual traversal/index bookkeeping duplicated at call sites"
+    },
+    {
+      "id": "mediator",
+      "name": "Mediator",
+      "family": "behavioral",
+      "roles": ["mediator", "colleague"],
+      "required_relations": [
+        "colleague CONTAINS a reference to mediator (not to other colleagues directly)",
+        "mediator CONTAINS references to >=2 colleagues",
+        "colleague-to-colleague communication is a CALLS through mediator, never a direct edge"
+      ],
+      "behavioral_signals": ["mediator centralizes reactions to colleague events instead of colleagues reacting to each other"],
+      "conflicts_with": [],
+      "opportunity_signal": "many-to-many direct dependencies between components that only need to react to each other's changes"
+    },
+    {
+      "id": "memento",
+      "name": "Memento",
+      "family": "behavioral",
+      "roles": ["originator", "memento", "caretaker"],
+      "required_relations": [
+        "originator CONTAINS a method that INSTANTIATES/RETURNS a memento (snapshot)",
+        "originator CONTAINS a method that restores state FROM a memento",
+        "caretaker CONTAINS/REFERENCES mementos without reading their internals"
+      ],
+      "behavioral_signals": ["memento's fields are opaque to caretaker and only originator reads them back"],
+      "conflicts_with": [],
+      "opportunity_signal": "manual undo/rollback logic reconstructing prior state field by field"
+    },
+    {
+      "id": "observer",
+      "name": "Observer",
+      "family": "behavioral",
+      "roles": ["subject", "observer"],
+      "required_relations": [
+        "subject CONTAINS a collection of observer references (homogeneous, >1 element type-compatible)",
+        "subject has a method that adds to that collection (REGISTERS) and one that removes from it",
+        "subject has a method that ITERATES the collection and CALLS the same method on each element (fan-out)"
+      ],
+      "behavioral_signals": ["the fan-out call happens in reaction to subject's own state changing (NOTIFIES)"],
+      "conflicts_with": [],
+      "opportunity_signal": "a producer calling multiple concrete consumers directly and by name"
+    },
+    {
+      "id": "state",
+      "name": "State",
+      "family": "behavioral",
+      "roles": ["context", "state", "concrete_state"],
+      "required_relations": [
+        "context CONTAINS a reference to a state-typed field",
+        "concrete_state IMPLEMENTS/INHERITS state",
+        "context DELEGATES_TO the current state for behavior that varies by state",
+        "a TRANSITIONS_TO relation reassigns context's state field to a different concrete_state"
+      ],
+      "behavioral_signals": ["the same context method returns different concrete behavior across the object's lifetime, driven by an internal transition"],
+      "conflicts_with": ["strategy"],
+      "opportunity_signal": "the same lifecycle discriminator (e.g. pending/running/failed/completed) repeated as conditionals across multiple methods, WITH evidence of transitions between values"
+    },
+    {
+      "id": "strategy",
+      "name": "Strategy",
+      "family": "behavioral",
+      "roles": ["context", "strategy", "concrete_strategy"],
+      "required_relations": [
+        "context CONTAINS a reference to a strategy-typed field or parameter",
+        "concrete_strategy IMPLEMENTS/INHERITS strategy",
+        "context DELEGATES_TO the strategy for one interchangeable algorithm step",
+        ">=2 concrete_strategy implementations exist"
+      ],
+      "behavioral_signals": ["the concrete strategy is selected by the caller/composition root, not by context's own internal state"],
+      "conflicts_with": ["state"],
+      "opportunity_signal": "the same discriminator repeated as conditionals across multiple functions, selecting between algorithm variants, WITHOUT evidence of state transitions"
+    },
+    {
+      "id": "template_method",
+      "name": "Template Method",
+      "family": "behavioral",
+      "roles": ["abstract_class", "concrete_class"],
+      "required_relations": [
+        "abstract_class CONTAINS a method that CALLS >=2 of its own overridable steps in a fixed sequence",
+        "concrete_class INHERITS abstract_class and overrides >=1 of those steps"
+      ],
+      "behavioral_signals": ["the overall sequence never changes across concrete subclasses; only individual steps do"],
+      "conflicts_with": [],
+      "opportunity_signal": "the same multi-step sequence repeated with small per-case variations"
+    },
+    {
+      "id": "visitor",
+      "name": "Visitor",
+      "family": "behavioral",
+      "roles": ["visitor", "element", "concrete_element"],
+      "required_relations": [
+        "concrete_element CONTAINS an accept(visitor) method",
+        "accept DELEGATES_TO a type-specific method on visitor",
+        "visitor CONTAINS one method per concrete_element type"
+      ],
+      "behavioral_signals": ["adding a new visitor operation requires no change to concrete_element, only a new visitor"],
+      "conflicts_with": [],
+      "opportunity_signal": "multiple unrelated operations distributed across a stable class hierarchy via type checks"
+    }
+  ]
+}

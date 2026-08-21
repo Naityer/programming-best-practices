@@ -288,6 +288,55 @@ class BuildReportTests(unittest.TestCase):
             report_doc = json.loads((with_review / "report.json").read_text(encoding="utf-8"))
             self.assertNotIn("_review_ledger", report_doc)
 
+    def test_design_patterns_check_is_normalized_and_merged_into_dimensions_and_findings(self) -> None:
+        """Both edits build_report.py needs are exercised here: SUPPORTED_FORMATS
+        (or _auto_fragment never even tries) and the `candidates` entry (or it tries
+        and finds nothing) — see design-patterns-module/05-hallazgos-codigo.md."""
+        with tempfile.TemporaryDirectory() as project, tempfile.TemporaryDirectory() as artifacts:
+            output = Path(artifacts) / "design-patterns.json"
+            output.write_text(json.dumps({
+                "schema_version": "1.0.0", "files_scanned": 2, "languages": ["python"],
+                "patterns": [
+                    {
+                        "pattern_id": "adapter", "status": "detected", "confidence": "medium",
+                        "primary_location": {"file": "a.py", "line": 1},
+                        "roles": {"target": "T", "adapter": "A", "adaptee": "D"},
+                        "evidence": [], "contradictions": [],
+                    },
+                    {
+                        "pattern_id": "strategy", "status": "refactor-opportunity", "confidence": "medium",
+                        "primary_location": {"file": "calc.py", "line": 4},
+                        "roles": {"discriminator_site_1": "X", "discriminator_site_2": "Y"},
+                        "evidence": [{"kind": "hard", "description": "shared discriminator"}],
+                        "contradictions": [],
+                        "refactoring": {
+                            "smell": "repeated conditional dispatch", "candidate_pattern": "strategy",
+                            "sites": ["X", "Y"],
+                        },
+                    },
+                ],
+                "limitations": [],
+            }), encoding="utf-8")
+            execution = {
+                "root": project, "profile": "standard", "scope": "repository",
+                "generated_at": "2026-08-13T12:00:00Z",
+                "checks": [{
+                    "id": "universal.design-patterns", "name": "design-patterns", "category": "quality",
+                    "status": "passed", "command": "python analyze_design_patterns.py", "exit_code": 0,
+                    "duration_ms": 5, "stdout": "", "stderr": "",
+                    "artifact_dir": artifacts, "output_format": "design-patterns",
+                    "required": False, "reason": "", "gate": False, "effective_scope": "repository",
+                }],
+            }
+            report = build_report.build(execution, [])
+            self.assertEqual(1, len(report["findings"]))
+            self.assertEqual("pbp.pattern.strategy.opportunity", report["findings"][0]["rule_id"])
+            self.assertEqual("quality", report["findings"][0]["category"])
+            design_patterns = report["summary"]["dimensions"]["design_patterns"]
+            self.assertEqual(1, design_patterns["detected"])
+            self.assertEqual(1, design_patterns["refactor_opportunities"])
+            self.assertEqual("findings", report["tools"][0]["status"])
+
     def test_first_audit_of_a_repository_succeeds_when_quality_audit_does_not_exist_yet(self) -> None:
         """Regresión: en el primer audit de un repositorio, `<repo>/.quality-audit/`
         (el padre de `--output-dir` si se sigue la convención documentada en

@@ -1,0 +1,257 @@
+{
+  "schema_version": "1.0.0",
+  "scope": "Atlas core plus executable seven-ecosystem behavioral corpus",
+  "cases": [
+    {
+      "id": "full-sort-extreme",
+      "source": "def f(xs):\n    return sorted(xs)[0]\n",
+      "expected": {
+        "pbp.algorithm.sort.full-sort-for-extreme": "ASSISTED"
+      }
+    },
+    {
+      "id": "repeated-membership",
+      "source": "def f(xs, queries):\n    out=[]\n    for q in queries:\n        if q in xs:\n            out.append(q)\n    return out\n",
+      "expected": {
+        "pbp.algorithm.search.repeated-linear-membership": "ASSISTED"
+      }
+    },
+    {
+      "id": "quadratic-dedup",
+      "source": "def f(xs):\n    out=[]\n    for x in xs:\n        if x not in out:\n            out.append(x)\n    return out\n",
+      "expected": {
+        "pbp.algorithm.dedup.quadratic-membership": "ASSISTED"
+      }
+    },
+    {
+      "id": "bfs-list-queue",
+      "source": "def f(start):\n    queue=[start]\n    while queue:\n        node=queue.pop(0)\n    return node\n",
+      "expected": {
+        "pbp.algorithm.graph.bfs-list-pop-zero": "ASSISTED"
+      }
+    },
+    {
+      "id": "overlapping-recursion",
+      "source": "def fib(n):\n    if n < 2: return n\n    return fib(n-1)+fib(n-2)\n",
+      "expected": {
+        "pbp.algorithm.dp.overlapping-recursion": "ASSISTED"
+      }
+    },
+    {
+      "id": "binary-unsorted",
+      "source": "import bisect\nx=bisect.bisect_left([3,1,2],2)\n",
+      "expected": {
+        "pbp.algorithm.search.binary-unsorted-input": "BLOCKED"
+      }
+    },
+    {
+      "id": "dijkstra-negative",
+      "source": "import networkx as nx\ng=nx.DiGraph()\ng.add_edge('a','b',weight=-1)\np=nx.dijkstra_path(g,'a','b')\n",
+      "expected": {
+        "pbp.algorithm.graph.dijkstra-negative-weight": "BLOCKED"
+      }
+    },
+    {
+      "id": "repeated-concatenation",
+      "source": "def f(parts):\n    result=''\n    for part in parts:\n        result += part\n    return result\n",
+      "expected": {
+        "pbp.algorithm.sequence.repeated-concatenation": "ASSISTED"
+      }
+    },
+    {
+      "id": "tiny-membership-negative",
+      "source": "def f(xs):\n    return [x for x in xs if x in [1,2,3]]\n",
+      "expected": {}
+    },
+    {
+      "id": "sorted-literal-bisect-negative",
+      "source": "import bisect\nx=bisect.bisect_left([1,2,3],2)\n",
+      "expected": {}
+    },
+    {
+      "id": "nonnegative-dijkstra-negative",
+      "source": "import networkx as nx\ng=nx.DiGraph()\ng.add_edge('a','b',weight=1)\np=nx.dijkstra_path(g,'a','b')\n",
+      "expected": {}
+    },
+    {
+      "id": "full-sort-needed-negative",
+      "source": "def f(xs):\n    return sorted(xs)\n",
+      "expected": {}
+    },
+    {
+      "id": "repeated-membership-python",
+      "files": {
+        "case.py": "def f(available, requested):\n    for item in requested:\n        if item in available:\n            print(item)\n"
+      },
+      "expected": {
+        "pbp.algorithm.search.repeated-linear-membership": "ASSISTED"
+      }
+    },
+    {
+      "id": "repeated-membership-jvm",
+      "files": {
+        "Case.java": "class Case { void f(java.util.List<Integer> a, java.util.List<Integer> r) { for (int x:r) { if(a.contains(x)) use(x); } } }"
+      },
+      "expected": {
+        "pbp.algorithm.search.repeated-linear-membership": "ASSISTED"
+      }
+    },
+    {
+      "id": "repeated-membership-js-ts",
+      "files": {
+        "case.ts": "function f(a:number[],r:number[]){ for(const x of r){ if(a.includes(x)) use(x); } }"
+      },
+      "expected": {
+        "pbp.algorithm.search.repeated-linear-membership": "ASSISTED"
+      }
+    },
+    {
+      "id": "repeated-membership-dotnet",
+      "files": {
+        "Case.cs": "class Case { void F(List<int> a,List<int> r){ foreach(var x in r){ if(a.Contains(x)) Use(x); } } }"
+      },
+      "expected": {
+        "pbp.algorithm.search.repeated-linear-membership": "ASSISTED"
+      }
+    },
+    {
+      "id": "repeated-membership-go",
+      "files": {
+        "case.go": "package main\nimport \"slices\"\nfunc f(a,r []int){ for _,x:=range r { if slices.Contains(a,x){ println(x) } } }"
+      },
+      "expected": {
+        "pbp.algorithm.search.repeated-linear-membership": "ASSISTED"
+      }
+    },
+    {
+      "id": "repeated-membership-rust",
+      "files": {
+        "case.rs": "fn f(a:&[i32],r:&[i32]){ for x in r { if a.contains(x){ println!(\"{}\",x); } } }"
+      },
+      "expected": {
+        "pbp.algorithm.search.repeated-linear-membership": "ASSISTED"
+      }
+    },
+    {
+      "id": "repeated-membership-cpp",
+      "files": {
+        "case.cpp": "#include <algorithm>\nvoid f(V a,V r){ for(auto x:r){ if(std::find(a.begin(),a.end(),x)!=a.end()){ use(x); } } }"
+      },
+      "expected": {
+        "pbp.algorithm.search.repeated-linear-membership": "ASSISTED"
+      }
+    },
+    {
+      "id": "repeated-concat-python",
+      "files": {
+        "case.py": "def f(parts):\n    out=''\n    for part in parts:\n        out += part\n    return out\n"
+      },
+      "expected": {
+        "pbp.algorithm.sequence.repeated-concatenation": "ASSISTED"
+      }
+    },
+    {
+      "id": "repeated-concat-jvm",
+      "files": {
+        "Case.java": "class Case { String f(String[] p){ String o=\"\"; for(String x:p){o+=x;} return o;} }"
+      },
+      "expected": {
+        "pbp.algorithm.sequence.repeated-concatenation": "ASSISTED"
+      }
+    },
+    {
+      "id": "repeated-concat-js-ts",
+      "files": {
+        "case.ts": "function f(p:string[]){let o='';for(const x of p){o+=x;}return o;}"
+      },
+      "expected": {
+        "pbp.algorithm.sequence.repeated-concatenation": "ASSISTED"
+      }
+    },
+    {
+      "id": "repeated-concat-dotnet",
+      "files": {
+        "Case.cs": "class Case { string F(string[] p){var o=\"\";foreach(var x in p){o+=x;}return o;} }"
+      },
+      "expected": {
+        "pbp.algorithm.sequence.repeated-concatenation": "ASSISTED"
+      }
+    },
+    {
+      "id": "repeated-concat-go",
+      "files": {
+        "case.go": "package main\nfunc f(p []string)string{o:=\"\";for _,x:=range p{o+=x};return o}"
+      },
+      "expected": {
+        "pbp.algorithm.sequence.repeated-concatenation": "ASSISTED"
+      }
+    },
+    {
+      "id": "repeated-concat-rust",
+      "files": {
+        "case.rs": "fn f(p:Vec<String>)->String{let mut o=String::new();for x in p{o+=&x;}o}"
+      },
+      "expected": {
+        "pbp.algorithm.sequence.repeated-concatenation": "ASSISTED"
+      }
+    },
+    {
+      "id": "repeated-concat-cpp",
+      "files": {
+        "case.cpp": "std::string f(V p){std::string o;for(auto x:p){o+=x;}return o;}"
+      },
+      "expected": {
+        "pbp.algorithm.sequence.repeated-concatenation": "ASSISTED"
+      }
+    },
+    {
+      "id": "all-pairs-negative-python",
+      "files": {
+        "case.py": "def f(xs,ys):\n    for x in xs:\n        for y in ys:\n            print(x*y)\n"
+      },
+      "expected": {}
+    },
+    {
+      "id": "all-pairs-negative-jvm",
+      "files": {
+        "Case.java": "class Case { void f(int[] xs,int[] ys){for(int x:xs){for(int y:ys){use(x*y);}}} }"
+      },
+      "expected": {}
+    },
+    {
+      "id": "all-pairs-negative-js-ts",
+      "files": {
+        "case.ts": "function f(xs:number[],ys:number[]){for(const x of xs){for(const y of ys){use(x*y);}}}"
+      },
+      "expected": {}
+    },
+    {
+      "id": "all-pairs-negative-dotnet",
+      "files": {
+        "Case.cs": "class Case {void F(int[] xs,int[] ys){foreach(var x in xs){foreach(var y in ys){Use(x*y);}}}}"
+      },
+      "expected": {}
+    },
+    {
+      "id": "all-pairs-negative-go",
+      "files": {
+        "case.go": "package main\nfunc f(xs,ys []int){for _,x:=range xs{for _,y:=range ys{println(x*y)}}}"
+      },
+      "expected": {}
+    },
+    {
+      "id": "all-pairs-negative-rust",
+      "files": {
+        "case.rs": "fn f(xs:&[i32],ys:&[i32]){for x in xs{for y in ys{println!(\"{}\",x*y);}}}"
+      },
+      "expected": {}
+    },
+    {
+      "id": "all-pairs-negative-cpp",
+      "files": {
+        "case.cpp": "void f(V xs,V ys){for(auto x:xs){for(auto y:ys){use(x*y);}}}"
+      },
+      "expected": {}
+    }
+  ]
+}

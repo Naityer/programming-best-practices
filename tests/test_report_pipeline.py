@@ -137,6 +137,34 @@ class ReportPipelineTests(unittest.TestCase):
         errors = validate_report.validate_report(data)
         self.assertTrue(any("$.quality_score" in error for error in errors))
         self.assertTrue(any("$.tools[0].unexpected" in error for error in errors))
+    def test_design_patterns_dimension_renders_its_own_section_and_table(self) -> None:
+        data = sample_report()
+        data["summary"]["dimensions"]["design_patterns"] = {
+            "detected": 1, "partial": 0, "misimplemented": 0, "refactor_opportunities": 1,
+            "ambiguous": 0, "by_family": {"structural": 1, "behavioral": 1},
+            "patterns": [
+                {"pattern_id": "adapter", "status": "detected", "confidence": "medium",
+                 "file": "a.py", "line": 1, "participants": 3},
+                {"pattern_id": "strategy", "status": "refactor-opportunity", "confidence": "medium",
+                 "file": "calc.py", "line": 4, "participants": 2},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            input_path = root / "input.json"
+            input_path.write_text(json.dumps(data), encoding="utf-8")
+            destination = render_report.render(input_path, root)
+            markdown = (destination / "report.md").read_text(encoding="utf-8")
+            self.assertIn("## Design Patterns", markdown)
+            self.assertIn("Detected: 1", markdown)
+            self.assertIn("Refactor opportunities: 1", markdown)
+            self.assertIn("| adapter | detected | medium | `a.py:1` | 3 |", markdown)
+            self.assertIn("| strategy | refactor-opportunity | medium | `calc.py:4` | 2 |", markdown)
+            # The generic ### Dimensions dump must not ALSO repeat the whole
+            # roster as a raw JSON blob.
+            dimensions_section = markdown.split("### Dimensions")[1].split("## Design Patterns")[0]
+            self.assertNotIn("design_patterns", dimensions_section)
+
     def test_rejects_unavailable_as_unknown_status(self) -> None:
         data = sample_report()
         data["tools"][0]["status"] = "ok"

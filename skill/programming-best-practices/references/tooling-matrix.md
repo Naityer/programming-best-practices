@@ -30,6 +30,9 @@ Capture tool version, command, exit code, duration, scope, status, and report pa
 | Secrets | Gitleaks | History scanning can be expensive and needs scope awareness |
 | Filesystem/config/security | Trivy | DEEP unless repository already requires it |
 | Semantic security | CodeQL | Optional when available and licensed for the repository |
+| Design-pattern detection | Internal design-pattern analyzer (`analyze_design_patterns.py`) | Quality; STANDARD/DEEP; see [design-patterns/detection-rules.md](design-patterns/detection-rules.md) |
+| Pattern misuse | Internal design-pattern analyzer | Quality; STANDARD/DEEP; structural evidence only, never name-based |
+| Pattern refactoring opportunities | Internal design-pattern analyzer + semantic review | Quality; STANDARD/DEEP; needs no network, modifies nothing in the repository |
 
 ## Java/JVM
 

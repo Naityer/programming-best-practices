@@ -1,0 +1,99 @@
+{
+  "schema_version": "1.0.0",
+  "notes": "Knowledge base for spec §13's smell -> candidate-pattern relation. `implemented: true` entries are wired into scripts/design_patterns/opportunities.py; the rest are catalogued for a future detector and MUST NOT be applied automatically without the same kind of repeated, observed evidence detect_opportunities requires (spec §13's explicit ban on 'no encuentro X -> deberías usar X').",
+  "mappings": [
+    {
+      "smell": "repeated conditional dispatch on the same discriminator, selecting between algorithm variants",
+      "candidate_pattern": "strategy",
+      "implemented": true,
+      "detector": "scripts/design_patterns/opportunities.py:detect_opportunities"
+    },
+    {
+      "smell": "repeated conditional dispatch on a discriminator whose values resemble a lifecycle, with evidence of transitions between them",
+      "candidate_pattern": "state",
+      "implemented": true,
+      "detector": "scripts/design_patterns/opportunities.py:detect_opportunities"
+    },
+    {
+      "smell": "repeated complex construction with many constructor parameters at multiple call sites",
+      "candidate_pattern": "builder",
+      "implemented": true,
+      "detector": "scripts/design_patterns/opportunities.py:_builder_opportunities"
+    },
+    {
+      "smell": "repeated manual traversal of the same collection",
+      "candidate_pattern": "iterator",
+      "implemented": true,
+      "detector": "scripts/design_patterns/additional_opportunities.py:_iterator"
+    },
+    {
+      "smell": "repeated ad hoc conversion code translating between two incompatible APIs",
+      "candidate_pattern": "adapter",
+      "implemented": false
+    },
+    {
+      "smell": "growing combinations of optional behaviors layered onto an object ad hoc",
+      "candidate_pattern": "decorator",
+      "implemented": false
+    },
+    {
+      "smell": "repeated access-control, lazy-loading, or caching logic wrapping direct calls to the same object",
+      "candidate_pattern": "proxy",
+      "implemented": false
+    },
+    {
+      "smell": "the same subsystem orchestration sequence repeated at multiple call sites",
+      "candidate_pattern": "facade",
+      "implemented": true,
+      "detector": "scripts/design_patterns/opportunities.py:_facade_opportunities"
+    },
+    {
+      "smell": "a producer calling multiple concrete consumers directly and by name instead of a shared collection",
+      "candidate_pattern": "observer",
+      "implemented": true,
+      "detector": "scripts/design_patterns/opportunities.py:_observer_opportunities"
+    },
+    {
+      "smell": "the same multi-step sequence repeated with small per-case variations",
+      "candidate_pattern": "template_method",
+      "implemented": true,
+      "detector": "scripts/design_patterns/additional_opportunities.py:_template_method"
+    },
+    {
+      "smell": "manual undo/rollback logic reconstructing prior state field by field",
+      "candidate_pattern": "memento",
+      "implemented": false
+    },
+    {
+      "smell": "many-to-many direct dependencies between components that only need to react to each other's changes",
+      "candidate_pattern": "mediator",
+      "implemented": true,
+      "detector": "scripts/design_patterns/additional_opportunities.py:_mediator"
+    },
+    {
+      "smell": "actions that need queueing, history, or undo but call their receiver directly today",
+      "candidate_pattern": "command",
+      "implemented": false
+    },
+    {
+      "smell": "duplicated logic handling a single element and a group of elements separately",
+      "candidate_pattern": "composite",
+      "implemented": false
+    },
+    {
+      "smell": "large duplicated intrinsic state across many instances (requires measured evidence before claiming a performance benefit — spec §20/§21)",
+      "candidate_pattern": "flyweight",
+      "implemented": false
+    },
+    {
+      "smell": "manual field-by-field copy of an existing instance repeated at call sites",
+      "candidate_pattern": "prototype",
+      "implemented": false
+    },
+    {
+      "smell": "multiple unrelated operations distributed across a stable class hierarchy via type checks",
+      "candidate_pattern": "visitor",
+      "implemented": false
+    }
+  ]
+}

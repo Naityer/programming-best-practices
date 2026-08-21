@@ -79,12 +79,51 @@ class PlanAuditTests(unittest.TestCase):
             self.assertEqual("changed.py", gitleaks["argv"][2])
             self.assertEqual("changed-files", gitleaks["effective_scope"])
 
+    def test_design_patterns_check_narrows_to_changed_files_but_reads_the_whole_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "changed.py").write_text("value = 2", encoding="utf-8")
+            (root / "legacy.py").write_text("value = 1", encoding="utf-8")
+            inventory = {
+                "ecosystems": [], "configurations": [],
+                "default_scope": {"type": "changed-files", "files": ["changed.py"]},
+                "tools": {"python-runtime": {"status": "available", "command": sys.executable}},
+            }
+            with patch.object(plan_audit, "detect", return_value=inventory):
+                plan = plan_audit.create_plan(root, "standard")
+            check = next(item for item in plan["checks"] if item["id"] == "universal.design-patterns")
+            self.assertEqual("changed files + local dependency context", check["effective_scope"])
+            self.assertIn("--focus", check["argv"])
+            self.assertEqual("changed.py", check["argv"][check["argv"].index("--focus") + 1])
+            self.assertNotIn("legacy.py", check["argv"])
+            # --root still points at the whole repo, never just the diff:
+            self.assertIn(str(root), check["argv"])
+
     def test_explicit_scope_must_exist_inside_repository(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "app.py").write_text("value = 1", encoding="utf-8")
             with self.assertRaises(ValueError):
                 plan_audit.create_plan(root, "fast", "../outside")
+
+    def test_design_patterns_check_is_standard_and_above_only(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "app.py").write_text("value = 1\n", encoding="utf-8")
+            fast = plan_audit.create_plan(root, "fast")
+            standard = plan_audit.create_plan(root, "standard")
+            self.assertNotIn("universal.design-patterns", {item["id"] for item in fast["checks"]})
+            check = next(item for item in standard["checks"] if item["id"] == "universal.design-patterns")
+            self.assertEqual("quality", check["category"])
+            self.assertEqual("design-patterns", check["output_format"])
+            self.assertEqual("none", check["workspace_effects"])
+            self.assertFalse(check["network"])
+            self.assertFalse(check["generated_code"])
+            self.assertEqual("repository", check["effective_scope"])
+            self.assertIn("analyze_design_patterns.py", check["argv"][1])
+            self.assertIn(str(root), check["argv"])
+            self.assertIn("{artifact}/design-patterns.json", check["argv"])
+            self.assertIn("{artifact}/uml", check["argv"])
 
 if __name__ == "__main__":
     unittest.main()

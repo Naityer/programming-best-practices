@@ -48,6 +48,8 @@ Consider refused inheritance, fragile base classes, parallel inheritance hierarc
 
 Use Strategy, Factory Method, Adapter, Facade, Decorator, State, Observer, Command, or Builder only when each removes an observed recurring problem. Use Abstract Factory, Chain of Responsibility, Composite, Proxy, Bridge, Template Method, or Iterator when architecture and variation demand them. Require especially strong justification for Visitor, Memento, Flyweight, Prototype, and Mediator.
 
+Before asserting that a pattern is present, misapplied, or missing, run and read [design-patterns/detection-rules.md](design-patterns/detection-rules.md) — it is the deterministic, structural detector this rule of thumb is backed by; do not infer a pattern from a class or method name alone.
+
 Before recommending Singleton, check whether the composition root or dependency-injection container can own and inject the instance. Global access and hidden state reduce testability.
 
 ## Validation

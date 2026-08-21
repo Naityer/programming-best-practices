@@ -1,0 +1,17 @@
+{
+  "validated_at": "2026-08-21",
+  "tree_sitter": "0.25.2",
+  "tree_sitter_language_pack": "0.13.0",
+  "grammars": {
+    "java": "java",
+    "kotlin": "kotlin",
+    "javascript": "javascript",
+    "typescript": "typescript",
+    "csharp": "csharp",
+    "go": "go",
+    "rust": "rust",
+    "c": "c",
+    "cpp": "cpp"
+  },
+  "fallback_policy": "Missing or failed grammars produce an explicit limitation. Lexical evidence remains low confidence and never authorizes SAFE corrections."
+}

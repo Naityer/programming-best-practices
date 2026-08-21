@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.invalid/programming-best-practices/design-patterns/design-pattern-result.schema.json",
+  "title": "Design Pattern Analysis Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "files_scanned", "languages", "patterns", "limitations", "effective_scope"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "files_scanned": {"type": "integer", "minimum": 0},
+    "languages": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "effective_scope": {"type": "string", "minLength": 1},
+    "patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pattern_id", "status", "confidence", "primary_location", "roles", "evidence", "contradictions"],
+        "properties": {
+          "pattern_id": {"type": "string", "minLength": 1},
+          "status": {"enum": ["detected", "partial", "misimplemented", "refactor-opportunity", "ambiguous"]},
+          "confidence": {"enum": ["high", "medium", "low"]},
+          "primary_location": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["file", "line"],
+            "properties": {
+              "file": {"type": "string", "minLength": 1},
+              "line": {"type": "integer", "minimum": 1}
+            }
+          },
+          "roles": {
+            "type": "object",
+            "additionalProperties": {"type": "string", "minLength": 1}
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "description"],
+              "properties": {
+                "kind": {"enum": ["hard", "behavioral", "supporting", "contradiction"]},
+                "description": {"type": "string", "minLength": 1}
+              }
+            }
+          },
+          "contradictions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["pattern_id", "reason"],
+              "properties": {
+                "pattern_id": {"type": "string", "minLength": 1},
+                "reason": {"type": "string", "minLength": 1}
+              }
+            }
+          },
+          "refactoring": {"type": ["object", "null"]},
+          "uml_artifact": {"type": ["string", "null"]},
+          "uml": {
+            "type": ["object", "null"],
+            "additionalProperties": false,
+            "required": ["notation", "nodes", "relationships"],
+            "properties": {
+              "notation": {"const": "UML 2.5.1"},
+              "nodes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["role", "name", "bound", "classifier"],
+                  "properties": {
+                    "role": {"type": "string", "minLength": 1},
+                    "name": {"type": ["string", "null"]},
+                    "bound": {"type": "boolean"},
+                    "classifier": {"enum": ["class", "abstract", "interface"]}
+                  }
+                }
+              },
+              "relationships": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["source_role", "target_role", "type", "label", "source_multiplicity", "target_multiplicity"],
+                  "properties": {
+                    "source_role": {"type": "string", "minLength": 1},
+                    "target_role": {"type": "string", "minLength": 1},
+                    "type": {"enum": ["generalization", "realization", "association", "dependency", "aggregation", "composition"]},
+                    "label": {"type": "string", "minLength": 1},
+                    "source_multiplicity": {"type": ["string", "null"]},
+                    "target_multiplicity": {"type": ["string", "null"]}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  }
+}

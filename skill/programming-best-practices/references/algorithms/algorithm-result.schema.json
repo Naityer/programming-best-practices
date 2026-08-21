@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/programming-best-practices/algorithm-result.schema.json",
+  "title": "Algorithm Intelligence result",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "catalog_version",
+    "profile",
+    "effective_scope",
+    "languages",
+    "files_scanned",
+    "algorithms",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "catalog_version": {
+      "type": "string"
+    },
+    "profile": {
+      "enum": [
+        "fast",
+        "standard",
+        "deep"
+      ]
+    },
+    "effective_scope": {
+      "type": "string"
+    },
+    "languages": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "files_scanned": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "algorithms": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/occurrence"
+      }
+    },
+    "analysis": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "requirement": {
+      "type": "object",
+      "required": [
+        "name",
+        "state",
+        "hard",
+        "reason"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "PROVEN",
+            "LIKELY",
+            "UNKNOWN",
+            "CONTRADICTED"
+          ]
+        },
+        "hard": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "occurrence": {
+      "type": "object",
+      "required": [
+        "id",
+        "algorithm_id",
+        "rule_id",
+        "family",
+        "status",
+        "confidence",
+        "primary_location",
+        "problem_signature",
+        "current_approach",
+        "complexity",
+        "evidence",
+        "contradictions",
+        "requirements",
+        "alternatives",
+        "recommendation",
+        "category"
+      ],
+      "properties": {
+        "id": {
+          "pattern": "^ALG-[A-F0-9]{20}$"
+        },
+        "algorithm_id": {
+          "type": "string"
+        },
+        "rule_id": {
+          "pattern": "^pbp[.]algorithm[.]"
+        },
+        "family": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "recognized",
+            "optimal",
+            "acceptable",
+            "suboptimal",
+            "incorrect",
+            "refactor-opportunity",
+            "ambiguous",
+            "unknown",
+            "security-risk"
+          ]
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        "primary_location": {
+          "type": "object",
+          "required": [
+            "file",
+            "line"
+          ],
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "line": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "qualified_name": {
+              "type": "string"
+            }
+          }
+        },
+        "problem_signature": {
+          "type": "object"
+        },
+        "current_approach": {
+          "type": "string"
+        },
+        "complexity": {
+          "type": "object"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "contradictions": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/requirement"
+          }
+        },
+        "alternatives": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "recommendation": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "category": {
+          "enum": [
+            "quality",
+            "performance",
+            "security"
+          ]
+        }
+      }
+    }
+  }
+}

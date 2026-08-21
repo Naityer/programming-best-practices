@@ -20,7 +20,11 @@
           "action": {"enum": ["confirm", "dismiss"]},
           "reason": {"type": "string"},
           "reviewed_at": {"type": ["string", "null"]},
-          "reviewer": {"type": "string"},
+          "reviewer": {
+            "type": "string",
+            "pattern": "^(skill|agent|human)(:[A-Za-z0-9._-]+)?$",
+            "description": "Decision hierarchy tier making the call (skill = deterministic code, agent = LLM semantic review, human = supervision via an external tool like audit_code's panel), optionally followed by a free-text identifier after ':'."
+          },
           "overrides": {"type": ["object", "null"]},
           "unmatched": {"type": "boolean"},
           "matched": {

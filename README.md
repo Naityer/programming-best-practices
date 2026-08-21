@@ -19,3 +19,15 @@ python tools\install_skill.py
 
 The installer is dry-run by default. After reviewing the destination, run it with `--apply`. Existing installations are rejected unless `--force` is supplied; forced replacement creates a timestamped backup.
 
+
+## Production release gate (Python)
+
+With the sibling `audit_code` repository available:
+
+```powershell
+python skill\programming-best-practices\scripts\verify_design_patterns_release.py `
+  --audit-code-repo C:\path\to\audit_code `
+  --output-dir C:\temp\design-pattern-release
+```
+
+The command requires every test, the bidirectional review E2E, frontend checks, build, functional index, and validation against both real repositories to pass.

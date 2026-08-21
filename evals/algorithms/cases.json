@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0.0",
+  "scope": "Atlas core cases 40-47 plus false-positive guardrails",
+  "cases": [
+    {"id": "full-sort-extreme", "source": "def f(xs):\n    return sorted(xs)[0]\n", "expected": {"pbp.algorithm.sort.full-sort-for-extreme": "ASSISTED"}},
+    {"id": "repeated-membership", "source": "def f(xs, queries):\n    out=[]\n    for q in queries:\n        if q in xs:\n            out.append(q)\n    return out\n", "expected": {"pbp.algorithm.search.repeated-linear-membership": "ASSISTED"}},
+    {"id": "quadratic-dedup", "source": "def f(xs):\n    out=[]\n    for x in xs:\n        if x not in out:\n            out.append(x)\n    return out\n", "expected": {"pbp.algorithm.dedup.quadratic-membership": "ASSISTED"}},
+    {"id": "bfs-list-queue", "source": "def f(start):\n    queue=[start]\n    while queue:\n        node=queue.pop(0)\n    return node\n", "expected": {"pbp.algorithm.graph.bfs-list-pop-zero": "ASSISTED"}},
+    {"id": "overlapping-recursion", "source": "def fib(n):\n    if n < 2: return n\n    return fib(n-1)+fib(n-2)\n", "expected": {"pbp.algorithm.dp.overlapping-recursion": "ASSISTED"}},
+    {"id": "binary-unsorted", "source": "import bisect\nx=bisect.bisect_left([3,1,2],2)\n", "expected": {"pbp.algorithm.search.binary-unsorted-input": "BLOCKED"}},
+    {"id": "dijkstra-negative", "source": "import networkx as nx\ng=nx.DiGraph()\ng.add_edge('a','b',weight=-1)\np=nx.dijkstra_path(g,'a','b')\n", "expected": {"pbp.algorithm.graph.dijkstra-negative-weight": "BLOCKED"}},
+    {"id": "repeated-concatenation", "source": "def f(parts):\n    result=''\n    for part in parts:\n        result += part\n    return result\n", "expected": {"pbp.algorithm.sequence.repeated-concatenation": "ASSISTED"}},
+    {"id": "tiny-membership-negative", "source": "def f(xs):\n    return [x for x in xs if x in [1,2,3]]\n", "expected": {}},
+    {"id": "sorted-literal-bisect-negative", "source": "import bisect\nx=bisect.bisect_left([1,2,3],2)\n", "expected": {}},
+    {"id": "nonnegative-dijkstra-negative", "source": "import networkx as nx\ng=nx.DiGraph()\ng.add_edge('a','b',weight=1)\np=nx.dijkstra_path(g,'a','b')\n", "expected": {}},
+    {"id": "full-sort-needed-negative", "source": "def f(xs):\n    return sorted(xs)\n", "expected": {}}
+  ]
+}
