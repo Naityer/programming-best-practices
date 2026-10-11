@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "id": "programming-best-practices",
+  "nombre": "Programming Best Practices",
+  "version": "0.1.0",
+  "tipo": "skills",
+  "descripcion": "Auditoría de calidad de un repositorio: plan, ejecución segura, informe normalizado, revisión semántica y estadísticas.",
+  "skills": [
+    {
+      "nombre": "programming-best-practices",
+      "flujo": {
+        "carpetas": [
+          "*/.quality-audit"
+        ],
+        "pasos": [
+          {
+            "id": "planificar",
+            "etiqueta": "Planificar",
+            "detalle": "Descubre el repo y planifica comprobaciones, alcance y permisos (plan.json, normalmente fuera del repo).",
+            "produce": [
+              "**/plan.json"
+            ]
+          },
+          {
+            "id": "ejecutar",
+            "etiqueta": "Ejecutar",
+            "detalle": "Corre las comprobaciones con permisos explícitos (execution.json).",
+            "produce": [
+              "**/execution.json"
+            ]
+          },
+          {
+            "id": "informe",
+            "etiqueta": "Informe",
+            "detalle": "Resultados normalizados en Markdown, JSON y SARIF.",
+            "produce": [
+              "*/report.json"
+            ]
+          },
+          {
+            "id": "revision",
+            "etiqueta": "Revisión semántica",
+            "detalle": "Cada hallazgo confirmado o descartado con su motivo.",
+            "produce": [
+              "**/review-ledger.json"
+            ]
+          },
+          {
+            "id": "estadisticas",
+            "etiqueta": "Estadísticas",
+            "detalle": "Cumplimiento de herramientas y tendencias entre ejecuciones.",
+            "produce": [
+              "**/stats.json"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
