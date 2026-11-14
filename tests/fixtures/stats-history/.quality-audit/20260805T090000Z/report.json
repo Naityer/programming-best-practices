@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0.0",
+  "audit": {
+    "repository": "stats-history",
+    "profile": "standard",
+    "scope": "repository",
+    "mode": "audit",
+    "generated_at": "2026-08-05T09:00:00Z",
+    "outcome": "informational"
+  },
+  "summary": {
+    "finding_counts": {"blocker": 0, "high": 1, "medium": 0, "low": 0},
+    "dimensions": {"coverage": {"line_percent": 68.0}}
+  },
+  "tools": [
+    {
+      "name": "universal.semgrep (semgrep)",
+      "status": "findings",
+      "exit_code": 1,
+      "duration_ms": 120,
+      "version": "1.0",
+      "gate": false,
+      "effective_scope": "repository",
+      "category": "security",
+      "output_format": "semgrep",
+      "command": "semgrep --config=auto ."
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "fingerprint": "fp-1",
+      "rule_id": "security.shell",
+      "title": "Shell invocation",
+      "category": "security",
+      "severity": "high",
+      "confidence": "medium",
+      "locations": [{"file": "app.py", "line": 1}],
+      "evidence": [
+        {"source_type": "tool", "source": "semgrep", "message": "match"},
+        {"source_type": "llm", "source": "semantic-review", "message": "Verified exploit path."}
+      ],
+      "impact": "Untrusted input reaches a shell invocation.",
+      "recommendation": "Validate or escape the argument before passing it to the shell."
+    }
+  ],
+  "limitations": []
+}

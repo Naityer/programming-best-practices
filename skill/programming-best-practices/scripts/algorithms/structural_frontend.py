@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -79,7 +81,10 @@ def _classify(node: Any, raw: str) -> tuple[str | None, dict[str, Any]]:
         if "==" in raw or "!=" in raw:
             return "comparison", {"expression": raw[:240]}
     if "assignment" in node_type and "+=" in raw:
-        return "concatenate", {"expression": raw[:240]}
+        rhs = raw.split("+=", 1)[1].strip().rstrip(";")
+        if re.fullmatch(r"-?\d+(\.\d+)?", rhs):
+            return None, {}  # contador numérico
+        return "concatenate", {"expression": raw[:240], "sequence_evidence": bool(re.match(r"[\"'`\[]", rhs))}
     return None, {}
 
 

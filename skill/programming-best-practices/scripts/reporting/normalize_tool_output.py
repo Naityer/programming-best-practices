@@ -31,7 +31,7 @@ VENDORED_RE = re.compile(
     r"|node_modules|bower_components|vendor"
     r"|__pycache__|\.pytest_cache|\.mypy_cache|\.ruff_cache|\.tox"
     r"|site-packages|dist-info|egg-info"
-    r"|dist|build|out|target|coverage|htmlcov"
+    r"|dist|dist-[^/]+|build|out|target|coverage|htmlcov|\.vite[^/]*"
     r"|\.git|\.next|\.turbo|\.gradle|\.m2"
     r")(/|$)"
     r"|\.(pyc|pyo|min\.js|min\.css|map)$"
@@ -256,20 +256,22 @@ def parse_ruff(data: Any, root: Path | None) -> tuple[list[dict[str, Any]], dict
         location = item.get("location", {})
         if code in {"E999", "F821", "F822", "F823"}:
             category, severity = "correctness", "high"
-        elif code.startswith("S"):
+        elif re.fullmatch(r"S\d+", code):  # flake8-bandit; SIM*, SLF*, SLOT* no son de seguridad
             category, severity = "security", "high"
         elif code.startswith(("B", "PLE", "PLW")):
             category, severity = "correctness", "medium"
         else:
             category, severity = "maintainability", "low"
         message = item.get("message") or code
+        if code == "B008" and re.search(r"`(Depends|Query|Body|Header|Path|Form|File|Cookie|Security)`", message):
+            category, severity = "maintainability", "low"  # idioma de FastAPI, no un valor por defecto mutable
         fix = item.get("fix")
         recommendation = fix.get("message") if isinstance(fix, dict) and fix.get("message") else "Apply the smallest rule-specific correction and rerun Ruff."
         findings.append(_finding(
             "ruff", code, f"{code}: {message}", category, severity,
             _relative(item.get("filename"), root), location.get("row"), message,
             "The diagnostic identifies a concrete correctness, security, or maintainability defect.",
-            recommendation,
+            recommendation, discriminator=location.get("column"),
         ))
     return findings, {}, []
 
@@ -689,11 +691,49 @@ def parse_algorithms(data: Any, root: Path | None) -> tuple[list[dict[str, Any]]
     dimensions = {"algorithms": {"counts": counts, "by_family": by_family, "occurrences": roster}}
     return findings, dimensions, sorted(set(limitations))
 
+_STRUCTURE_RECOMMENDATIONS = {
+    "file-size": "Comprobar si el módulo reúne varias responsabilidades y separar la que tenga un motivo de cambio propio.",
+    "function-length": "Extraer los tramos con nombre propio solo si cada uno tiene una sola razón de cambio; no trocear por trocear.",
+    "cyclomatic-complexity": "Reducir ramas con cláusulas de guarda o tablas de decisión y cubrir cada rama con pruebas antes de refactorizar.",
+    "parameters": "Agrupar los parámetros que viajan juntos en un objeto de valor si representan un concepto.",
+    "nesting": "Aplanar con retornos tempranos o extraer el bloque interior.",
+    "many-methods": "Revisar si la clase mezcla responsabilidades (SRP) y repartirlas por cohesión de datos.",
+    "fan-out": "Revisar acoplamiento: un módulo con muchas dependencias suele hacer demasiado o conocer demasiado.",
+    "duplication": "Extraer lo común solo si los dos usos cambian por la misma razón; si divergen, dejar la copia.",
+    "import-cycle": "Romper el ciclo invirtiendo la dependencia (interfaz o parámetro) o moviendo lo compartido a un tercer módulo.",
+    "swallowed-exception": "Registrar el error con contexto o propagarlo; si descartarlo es intencionado, decir por qué en un comentario.",
+}
+
+
+def parse_structure(data: Any, root: Path | None) -> tuple[list[dict[str, Any]], dict[str, Any], list[str]]:
+    """Métricas estructurales: umbrales de revisión, nunca un veredicto (confianza media/baja, severidad baja/media)."""
+    findings: list[dict[str, Any]] = []
+    by_rule: dict[str, int] = {}
+    for item in data.get("items", []) or []:
+        rule = str(item.get("rule_id") or "pbp.structure.finding")
+        short = rule.rsplit(".", 1)[-1]
+        by_rule[short] = by_rule.get(short, 0) + 1
+        value, threshold = item.get("value") or 0, item.get("threshold") or 0
+        severe = short == "cyclomatic-complexity" and value >= 2 * threshold
+        findings.append(_finding(
+            "structure", rule, str(item.get("title") or rule), "maintainability",
+            "medium" if severe or short == "swallowed-exception" else "low",
+            str(item.get("file") or "unknown"), item.get("line"),
+            f"{item.get('metric')}={value} (umbral de revisión {threshold}, configurable)",
+            "Un módulo, función o clase por encima del umbral suele indicar varias responsabilidades o código difícil de probar.",
+            _STRUCTURE_RECOMMENDATIONS.get(short, "Revisar el contexto antes de actuar."),
+            confidence="medium" if short == "swallowed-exception" else "low",
+            metric=str(item.get("metric") or ""), value=value, discriminator=item.get("name"),
+        ))
+    dimensions = {"structure": {"files_analyzed": data.get("files_analyzed", 0), "by_rule": by_rule}}
+    return findings, dimensions, list(data.get("limitations", []) or [])
+
 JSON_PARSERS: dict[str, Callable[[Any, Path | None], tuple[list[dict[str, Any]], dict[str, Any], list[str]]]] = {
     "semgrep": parse_semgrep,
     "gitleaks": parse_gitleaks,
     "design-patterns": parse_design_patterns,
     "algorithms": parse_algorithms,
+    "structure": parse_structure,
     "trivy": parse_trivy,
     "osv-scanner": parse_osv,
     "coverage-py": parse_coverage_py,

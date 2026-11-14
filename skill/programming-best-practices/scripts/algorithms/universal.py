@@ -85,7 +85,9 @@ def _repeated_concatenation(operation: dict[str, Any], file: str, root: Path) ->
     return make_occurrence(
         algorithm_id="sequences.buffered-concatenation",
         rule_id="pbp.algorithm.sequence.repeated-concatenation",
-        family="sequences", status="refactor-opportunity", confidence="medium",
+        family="sequences", status="refactor-opportunity",
+        # Sin evidencia de que el acumulador sea una secuencia (cadena/lista) `x += y` puede ser una suma numérica.
+        confidence="medium" if operation.get("attributes", {}).get("sequence_evidence") else "low",
         location=location, problem="incremental-sequence-construction",
         current_approach="repeated addition inside an iteration",
         current_time="implementation-dependent", expected_time="O(n)",

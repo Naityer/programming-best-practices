@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0.0",
+  "repository": "stats-history",
+  "generated_at": "2026-08-05T09:00:00Z",
+  "decisions": [
+    {
+      "decision_id": "d1",
+      "action": "confirm",
+      "reason": "Verified exploit path.",
+      "reviewed_at": "2026-08-05T09:00:00Z",
+      "reviewer": "agent-semantic-review",
+      "overrides": null,
+      "unmatched": false,
+      "matched": [
+        {
+          "fingerprint": "fp-1",
+          "rule_id": "security.shell",
+          "category": "security",
+          "severity": "high",
+          "confidence": "medium",
+          "locations": [{"file": "app.py", "line": 1}],
+          "evidence_source_types": ["tool"],
+          "primary_source": "semgrep",
+          "primary_message": "match"
+        }
+      ]
+    }
+  ]
+}

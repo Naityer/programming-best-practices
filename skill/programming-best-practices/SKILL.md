@@ -35,6 +35,7 @@ Use instrumented evidence before heuristic opinion. Treat unavailable, skipped, 
 9. **Fix only when authorized.** Make local, reviewable changes; add behavior-focused tests; run the narrow checks first and the relevant broader checks afterward.
 10. **Build and render.** Run `python scripts/build_report.py <execution.json> --output-dir <new-directory>`, adding semantic findings or external fragments when applicable. Produce Markdown, normalized JSON, and SARIF without overwriting previous results.
 11. **Aggregate statistics (optional).** After at least one report exists, run `python scripts/build_stats.py --root <repo> --output-dir <new-directory>` to aggregate tool-compliance, review, and trend statistics across `.quality-audit/` history. This step only reads prior reports; it never re-executes a tool.
+12. **Exportar veredicto (optativo).** `python scripts/export_verdict.py <directorio del informe>` escribe `verdict.json` (resultado, recuentos por severidad con `blocker` incluido, herramientas requeridas incompletas y si hubo revisión semántica) para consumidores como vigilante. Las métricas de tamaño/complejidad/errores tragados salen del check `universal.structure` (`scripts/analyze_structure.py`); sus umbrales son disparadores de revisión, no un veredicto.
 
 ## Reference routing
 

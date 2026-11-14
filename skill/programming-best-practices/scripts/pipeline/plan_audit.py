@@ -66,9 +66,23 @@ def _check(
     }
 
 
+def _best_package(root: Path, package_files: list[str]) -> str | None:
+    """Sin package.json en la raíz (monorrepo), el subpaquete con más scripts auditables, no el primero por orden alfabético."""
+    wanted = {"test", "build", "typecheck", "lint"}
+
+    def score(item: str) -> int:
+        try:
+            return len(wanted & set(json.loads((root / item).read_text(encoding="utf-8")).get("scripts", {})))
+        except (OSError, json.JSONDecodeError, AttributeError):
+            return 0
+
+    ranked = sorted(package_files, key=lambda item: (-score(item), item))
+    return ranked[0] if ranked else None
+
+
 def _package_scripts(root: Path, configurations: list[str]) -> tuple[str | None, set[str]]:
     package_files = [item for item in configurations if item.endswith("package.json")]
-    root_package = "package.json" if "package.json" in package_files else (package_files[0] if package_files else None)
+    root_package = "package.json" if "package.json" in package_files else _best_package(root, package_files)
     if not root_package:
         return None, set()
     try:
@@ -108,7 +122,7 @@ def _python_checks(root: Path, inv: dict[str, Any], profile: str) -> list[dict[s
                          workspace_effects="runtime", timeout=900,
                          reason="No tests detected or pytest is unavailable."))
     ruff = _tool(inv, "ruff")
-    checks.append(_check("python.ruff", "ruff", "maintainability", [ruff, "check", "--output-format", "json", "."] if ruff else None,
+    checks.append(_check("python.ruff", "ruff", "maintainability", [ruff, "check", "--no-cache", "--output-format", "json", "."] if ruff else None,
                          ecosystem="python", output_format="ruff-json", reason="Ruff is unavailable."))
     for type_tool in ("mypy", "pyright"):
         executable = _tool(inv, type_tool)
@@ -474,7 +488,7 @@ def create_plan(root: Path, profile: str = "standard", scope: str | None = None)
 
     semgrep = _tool(inventory, "semgrep")
     local_config = next((item for item in inventory["configurations"] if Path(item).name in {".semgrep.yml", ".semgrep.yaml"}), None)
-    bundled = Path(__file__).resolve().parent / "rules" / "semgrep.yml"
+    bundled = Path(__file__).resolve().parent.parent / "rules" / "semgrep.yml"
     semgrep_config = str(root / local_config) if local_config else str(bundled)
     semgrep_argv = [semgrep, "scan", "--json", "--config", semgrep_config, *scope_targets] if semgrep and scope_targets else None
     checks.append(_check(
@@ -539,6 +553,13 @@ def create_plan(root: Path, profile: str = "standard", scope: str | None = None)
                 else "Python runtime is unavailable." if not design_patterns_python
                 else ""
             ),
+        ))
+        structure_script = str(Path(__file__).resolve().parent.parent / "analyze_structure.py")
+        checks.append(_check(
+            "universal.structure", "structure", "maintainability",
+            [design_patterns_python, structure_script, "--root", str(root), "--output", "{artifact}/structure.json"] if design_patterns_python else None,
+            minimum_profile="standard", output_format="structure", workspace_effects="none", network=False, timeout=300,
+            effective_scope="repository", reason="" if design_patterns_python else "Python runtime is unavailable.",
         ))
         algorithms_script = str(Path(__file__).resolve().parent.parent / "analyze_algorithms.py")
         algorithms_argv = None

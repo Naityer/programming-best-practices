@@ -14,6 +14,20 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+try:
+    from analysis_core.files import project_files
+except ModuleNotFoundError:  # carga aislada del paquete (tests de contrato)
+    import importlib.util
+    import sys
+
+    _spec = importlib.util.spec_from_file_location("_pbp_analysis_core_files", Path(__file__).resolve().parent.parent / "analysis_core" / "files.py")
+    if _spec is None or _spec.loader is None:
+        raise
+    _module = importlib.util.module_from_spec(_spec)
+    sys.modules[_spec.name] = _module
+    _spec.loader.exec_module(_module)
+    project_files = _module.project_files
+
 LANGUAGE_BY_SUFFIX = {
     ".py": "python", ".java": "java", ".kt": "kotlin", ".kts": "kotlin",
     ".js": "javascript", ".jsx": "javascript", ".ts": "typescript", ".tsx": "typescript",
@@ -32,9 +46,9 @@ class SourceUnit:
 
 
 def iter_source_units(root: Path) -> Iterator[SourceUnit]:
-    for path in sorted(root.rglob("*")):
+    for path in project_files(root, EXCLUDED):
         language = LANGUAGE_BY_SUFFIX.get(path.suffix.lower())
-        if not language or not path.is_file() or any(part in EXCLUDED for part in path.relative_to(root).parts[:-1]):
+        if not language:
             continue
         try:
             yield SourceUnit(path, language, path.read_text(encoding="utf-8", errors="replace"))

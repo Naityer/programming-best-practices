@@ -6,11 +6,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
 
 from normalize_tool_output import normalize
+from reporting.normalize_tool_output import _finding
 from render_report import render
 from validate_review_ledger import validate_review_ledger
 
@@ -24,7 +26,7 @@ SUPPORTED_FORMATS = {
     # auditoría diría "correcto" sin haber mirado nada, que es el peor
     # resultado posible.
     "bundle-size", "pytest-benchmark", "web-runtime",
-    "design-patterns", "algorithms",
+    "design-patterns", "algorithms", "structure",
 }
 
 
@@ -57,6 +59,7 @@ def _auto_fragment(check: dict[str, Any], root: Path) -> dict[str, Any] | None:
         "web-runtime": artifact / "web-runtime.json",
         "design-patterns": artifact / "design-patterns.json",
         "algorithms": artifact / "algorithms.json",
+        "structure": artifact / "structure.json",
     }
     input_path = candidates.get(kind, Path(check.get("stdout") or ""))
     if kind == "cobertura" and not input_path.is_file():
@@ -75,6 +78,37 @@ def _auto_fragment(check: dict[str, Any], root: Path) -> dict[str, Any] | None:
             "schema_version": "1.0.0", "tool": kind, "findings": [], "dimensions": {},
             "limitations": [f"{check['id']} output could not be normalized: {exc}"],
         }
+
+
+_TEST_SUMMARY = re.compile(r"(?:Tests\s+(\d+) failed|(\d+) failed(?:,|\s+in|\s*\|)|(\d+) failures?)")
+
+
+def _test_failure_fragment(check: dict[str, Any]) -> dict[str, Any] | None:
+    """Un check de tests que termina con `findings` y no tiene adaptador no dejaba NINGÚN hallazgo: los tests
+    rojos no aparecían en el recuento ni en verdict.json. Se sintetiza uno con el resumen y los nombres que se vean."""
+    if check.get("category") != "tests" or check.get("status") != "findings":
+        return None
+    path = Path(check.get("stdout") or "")
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")[-20000:] if path.is_file() else ""
+    except OSError:
+        text = ""
+    text = re.sub(r"\[[0-9;]*m", "", text)
+    vitest = re.search(r"^\s*Tests\s+(\d+) failed", text, re.M)
+    count = int(vitest.group(1)) if vitest else next((int(g) for m in _TEST_SUMMARY.finditer(text) for g in m.groups() if g), None)
+    names = [m.group(1).strip()[:160] for m in re.finditer(r"^FAILED\s+(\S.*)$", text, re.M)][:5]
+    names += [m.group(1).strip()[:160] for m in re.finditer(r"^\s*❯\s+(\S.*\|\s*\d+ failed.*)$", text, re.M)][:5]
+    where = re.search(r"([\w./\-]+\.(?:py|test\.[tj]sx?|spec\.[tj]sx?))", " ".join(names)) if names else None
+    amount = f"{count} test(s)" if count else "tests"
+    finding = _finding(
+        "tests", "pbp.tests.failing", f"{check['id']}: {amount} fallan", "tests", "high",
+        where.group(1).replace("\\", "/") if where else check["id"], None,
+        "; ".join(names) or "El comando de tests terminó con fallos (sin resumen reconocible).",
+        "Hay tests rojos: la rama no es verificable y cualquier refactor carece de red de seguridad.",
+        "Reproducir cada fallo; distinguir los del entorno (copia sin .git, datos locales no versionados) de los reales y arreglar los reales.",
+        confidence="medium", discriminator=check["id"],
+    )
+    return {"schema_version": "1.0.0", "tool": "tests", "findings": [finding], "dimensions": {}, "limitations": []}
 
 
 def _matches(finding: dict[str, Any], decision: dict[str, Any]) -> bool:
@@ -180,6 +214,20 @@ def _apply_review(
     return remaining, notes, ledger
 
 
+def _disambiguate_ids(findings: list[dict[str, Any]]) -> None:
+    """Dos hallazgos distintos pueden compartir huella (misma regla, fichero, línea y mensaje en columnas
+    distintas). El validador rechaza ids repetidos y el informe entero se perdía; se numera la repetición
+    (`-2`, `-3`…) en orden de aparición, así que sigue siendo estable entre ejecuciones."""
+    seen: dict[str, int] = {}
+    for finding in findings:
+        fid = finding.get("id")
+        if not fid:
+            continue
+        seen[fid] = seen.get(fid, 0) + 1
+        if seen[fid] > 1:
+            finding["id"] = f"{fid}-{seen[fid]}"
+
+
 def build(
     execution: dict[str, Any],
     fragments: list[dict[str, Any]],
@@ -198,13 +246,14 @@ def build(
         limitations.extend(fragment.get("limitations", []))
 
     for check in execution["checks"]:
-        fragment = _auto_fragment(check, root)
+        fragment = _auto_fragment(check, root) or _test_failure_fragment(check)
         if fragment:
             fragments_by_check[check["id"]] = fragment
             findings.extend(fragment.get("findings", []))
             _merge_dimensions(dimensions, fragment.get("dimensions", {}))
             limitations.extend(fragment.get("limitations", []))
 
+    _disambiguate_ids(findings)
     findings, review_notes, ledger = _apply_review(findings, semantic_review)
     limitations.extend(review_notes)
 

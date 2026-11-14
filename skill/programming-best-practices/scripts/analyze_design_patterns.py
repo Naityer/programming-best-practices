@@ -23,6 +23,7 @@ import json
 import sys
 from pathlib import Path
 
+from analysis_core.files import project_files
 from design_patterns.catalog import load_catalog
 from design_patterns.detectors import registry
 from design_patterns.engine import run_engine
@@ -59,14 +60,12 @@ def _is_excluded(root: Path, path: Path) -> bool:
 
 
 def _iter_python_files(root: Path) -> list[Path]:
-    return sorted(path for path in root.rglob("*.py") if not _is_excluded(root, path))
+    return [path for path in project_files(root, _EXCLUDED_DIR_NAMES) if path.suffix == ".py"]
 
 
 def _unsupported_language_limitations(root: Path) -> list[str]:
     counts: dict[str, int] = {}
-    for path in root.rglob("*"):
-        if not path.is_file() or _is_excluded(root, path):
-            continue
+    for path in project_files(root, _EXCLUDED_DIR_NAMES):
         language = _UNSUPPORTED_SOURCE_LANGUAGES.get(path.suffix.lower())
         if language:
             counts[language] = counts.get(language, 0) + 1

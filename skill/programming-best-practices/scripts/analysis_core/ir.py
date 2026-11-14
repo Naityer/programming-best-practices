@@ -154,7 +154,13 @@ def _operation(node: ast.AST, *, file: str, name: str, parents: dict[ast.AST, as
         if divisor in {1, 2}:
             kind = "binary-reduction"
     elif isinstance(node, ast.AugAssign) and isinstance(node.op, ast.Add):
+        value = node.value
+        if isinstance(value, ast.Constant) and isinstance(value.value, (int, float, complex)) and not isinstance(value.value, bool):
+            return None  # contador numérico: no es construcción de secuencia
         kind = "concatenate"
+        attributes["sequence_evidence"] = isinstance(value, (ast.JoinedStr, ast.List, ast.Tuple)) or (
+            isinstance(value, ast.Constant) and isinstance(value.value, (str, bytes))
+        )
     elif isinstance(node, ast.Compare):
         kind = "comparison"
         attributes["operators"] = [type(op).__name__ for op in node.ops]
