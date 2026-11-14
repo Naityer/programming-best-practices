@@ -149,7 +149,66 @@ class _ClassInfo:
     fields: dict[str, _FieldInfo]
 
 
-def _analyze_method(node: ast.FunctionDef | ast.AsyncFunctionDef, fields: dict[str, _FieldInfo]) -> _MethodInfo:
+_ITERATION_WRAPPERS = {"list", "tuple", "sorted", "iter", "reversed"}
+_COLLECTION_VIEWS = {"get", "values", "copy", "items"}
+
+
+def _iterated_self_field(node: ast.AST) -> str | None:
+    """El campo `self.<x>` sobre el que se itera, aunque se itere una copia o una vista: `list(self._x)`, `self._x.get(k, [])`, `self._x[k]`…
+
+    Los suscriptores se copian antes de recorrerlos para poder darse de baja durante la notificación; sin esto, ese patrón (el habitual) se perdía."""
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "self":
+        return node.attr
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in _ITERATION_WRAPPERS and node.args:
+        return _iterated_self_field(node.args[0])
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _COLLECTION_VIEWS:
+        return _iterated_self_field(node.func.value)
+    if isinstance(node, ast.Subscript):
+        return _iterated_self_field(node.value)
+    return None
+
+
+def _guarded_class_attribute(test: ast.AST) -> str | None:
+    """El atributo que comprueba una guarda de «aún no hay instancia»: `X.a is None` o `not X.a`."""
+    if isinstance(test, ast.Compare) and len(test.ops) == 1 and isinstance(test.ops[0], ast.Is) and isinstance(test.comparators[0], ast.Constant) \
+            and test.comparators[0].value is None and isinstance(test.left, ast.Attribute) and isinstance(test.left.value, ast.Name):
+        return test.left.attr
+    if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not) and isinstance(test.operand, ast.Attribute) and isinstance(test.operand.value, ast.Name):
+        return test.operand.attr
+    return None
+
+
+def _creates_own_instance(value: ast.AST, class_name: str) -> bool:
+    """`Clase()`, `cls()`, `super().__new__(cls)` u `object.__new__(cls)` dentro de la propia clase."""
+    if not isinstance(value, ast.Call):
+        return False
+    function = value.func
+    if isinstance(function, ast.Name):
+        return function.id in {"cls", class_name}
+    return isinstance(function, ast.Attribute) and function.attr == "__new__" and bool(value.args) \
+        and isinstance(value.args[0], ast.Name) and value.args[0].id in {"cls", class_name}
+
+
+def _class_level_singleton_attributes(node: ast.FunctionDef | ast.AsyncFunctionDef, class_name: str) -> set[str]:
+    """Singleton con atributo de CLASE: `if cls._x is None: cls._x = <la propia clase>` (en un `get_instance` o en `__new__`).
+
+    Evidencia estructural dura: una guarda que comprueba que el atributo está vacío Y una asignación a ese mismo atributo de una instancia de la
+    propia clase. No se mira cómo se llama el método: un `instance()` que no hace eso no cuenta."""
+    attributes: set[str] = set()
+    for guard in (n for n in _iter_own_nodes(node) if isinstance(n, ast.If)):
+        attribute = _guarded_class_attribute(guard.test)
+        if attribute is None:
+            continue
+        for statement in ast.walk(ast.Module(body=guard.body, type_ignores=[])):
+            if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+                target = statement.targets[0]
+                if isinstance(target, ast.Attribute) and target.attr == attribute and isinstance(target.value, ast.Name) \
+                        and target.value.id in {"cls", class_name} and _creates_own_instance(statement.value, class_name):
+                    attributes.add(attribute)
+    return attributes
+
+
+def _analyze_method(node: ast.FunctionDef | ast.AsyncFunctionDef, fields: dict[str, _FieldInfo], class_name: str = "") -> _MethodInfo:
     args = node.args
     all_args = [*args.posonlyargs, *args.args, *args.kwonlyargs]
     params = tuple(a.arg for a in all_args if a.arg != "self")
@@ -167,6 +226,11 @@ def _analyze_method(node: ast.FunctionDef | ast.AsyncFunctionDef, fields: dict[s
     accept_delegate: tuple[str, str] | None = None
 
     is_init = node.name == "__init__"
+
+    own_singleton_attributes = _class_level_singleton_attributes(node, class_name) if class_name else set()
+    if own_singleton_attributes:
+        cache_fields.update(own_singleton_attributes)
+        instantiated_names.append(class_name)  # `super().__new__(cls)` no es una llamada a un nombre: se anota la propia clase
 
     for n in _iter_own_nodes(node):
         if isinstance(n, ast.Return) and isinstance(n.value, ast.Name) and n.value.id == "self":
@@ -240,15 +304,16 @@ def _analyze_method(node: ast.FunctionDef | ast.AsyncFunctionDef, fields: dict[s
                                 cache_fields.add(right.attr)
 
         elif isinstance(n, ast.For):
-            iter_node = n.iter
-            if isinstance(iter_node, ast.Attribute) and isinstance(iter_node.value, ast.Name) \
-                    and iter_node.value.id == "self" and isinstance(n.target, ast.Name):
+            iterated_field = _iterated_self_field(n.iter)
+            if iterated_field is not None and isinstance(n.target, ast.Name):
                 loop_var = n.target.id
                 for stmt in n.body:
                     call = stmt.value if isinstance(stmt, ast.Expr) else None
                     if isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute) \
                             and isinstance(call.func.value, ast.Name) and call.func.value.id == loop_var:
-                        fan_out.append((iter_node.attr, call.func.attr))
+                        fan_out.append((iterated_field, call.func.attr))
+                    elif isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == loop_var:
+                        fan_out.append((iterated_field, "__call__"))  # el elemento es un callback: `for f in self._x: f(datos)`
 
     # Visitor-shape: exactly one non-self parameter, body is a single
     # statement that calls `<param>.<anything>(...)`.
@@ -292,7 +357,7 @@ def _analyze_class(node: ast.ClassDef, file: str, module_qualifier: str) -> _Cla
     methods: dict[str, _MethodInfo] = {}
     for item in node.body:
         if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            methods[item.name] = _analyze_method(item, fields)
+            methods[item.name] = _analyze_method(item, fields, node.name)
     non_init_methods = [m for name, m in methods.items() if name != "__init__"]
     is_abstract = any(_simple_name_raw(b) in _ABSTRACT_SENTINELS for b in bases) or (
         bool(non_init_methods) and any(m.is_abstract_shaped for m in non_init_methods)

@@ -127,12 +127,101 @@ class SingletonShapeTests(unittest.TestCase):
                 return cls._instance
     """
 
-    def test_singleton_needs_self_caching_not_just_a_name(self) -> None:
-        # This is intentionally NOT detected: `cls._instance` isn't a
-        # `self.<attr>` cache write, so it correctly produces no HARD
-        # evidence rather than guessing from the method name "instance".
-        graph, _ = build_graph(self.SOURCE)
-        self.assertEqual([], detect_singleton(graph))
+    def hits(self, source: str) -> int:
+        graph, _ = build_graph(source)
+        return len(detect_singleton(graph))
+
+    def test_class_attribute_singleton_via_classmethod_is_detected(self) -> None:
+        # Una guarda («aún no hay instancia») y la asignación de una instancia de la PROPIA clase a ese mismo atributo de clase: evidencia estructural.
+        self.assertEqual(1, self.hits(self.SOURCE))
+
+    def test_class_attribute_singleton_via_dunder_new_is_detected(self) -> None:
+        self.assertEqual(1, self.hits("""
+            class Config:
+                _instancia = None
+
+                def __new__(cls):
+                    if cls._instancia is None:
+                        cls._instancia = super().__new__(cls)
+                    return cls._instancia
+        """))
+
+    def test_other_guard_and_creation_forms_are_detected(self) -> None:
+        for guard, create in (
+            ("if not cls._i:", "cls._i = cls()"),
+            ("if Registry._i is None:", "Registry._i = Registry()"),
+            ("if cls._i is None:", "cls._i = object.__new__(cls)"),
+        ):
+            with self.subTest(guard=guard, create=create):
+                self.assertEqual(1, self.hits(f"""
+                    class Registry:
+                        _i = None
+
+                        @classmethod
+                        def get(cls):
+                            {guard}
+                                {create}
+                            return cls._i
+                """))
+
+    def test_the_name_of_the_method_alone_is_not_evidence(self) -> None:
+        # Lo que se conserva del criterio original: no se adivina por llamarse `instance` o `get_instance`.
+        self.assertEqual(0, self.hits("""
+            class Registry:
+                @classmethod
+                def instance(cls):
+                    return Registry()
+        """))
+
+    def test_without_the_guard_or_the_cache_it_is_not_a_singleton(self) -> None:
+        sources = {
+            "sin guarda": """
+                class Registry:
+                    _instance = None
+
+                    @classmethod
+                    def instance(cls):
+                        cls._instance = Registry()
+                        return cls._instance
+            """,
+            "guarda de otro atributo": """
+                class Registry:
+                    _instance = None
+                    _ready = None
+
+                    @classmethod
+                    def instance(cls):
+                        if cls._ready is None:
+                            cls._instance = Registry()
+                        return cls._instance
+            """,
+            "crea otra clase": """
+                class Other:
+                    pass
+
+                class Registry:
+                    _instance = None
+
+                    @classmethod
+                    def instance(cls):
+                        if cls._instance is None:
+                            cls._instance = Other()
+                        return cls._instance
+            """,
+            "guarda un valor, no una instancia": """
+                class Registry:
+                    _instance = None
+
+                    @classmethod
+                    def instance(cls):
+                        if cls._instance is None:
+                            cls._instance = 5
+                        return cls._instance
+            """,
+        }
+        for name, source in sources.items():
+            with self.subTest(name=name):
+                self.assertEqual(0, self.hits(source))
 
     def test_singleton_with_self_scoped_cache_is_detected(self) -> None:
         source = """
@@ -233,6 +322,86 @@ class CrossFileLinkingTests(unittest.TestCase):
             {"target": "PaymentGateway", "adapter": "LegacyGatewayAdapter", "adaptee": "LegacyGateway"},
             result.roles,
         )
+
+
+class CallbackObserverTests(unittest.TestCase):
+    """Un bus de eventos con funciones como suscriptores: sin interfaz `Observador`, pero con la misma estructura."""
+
+    def hits(self, source: str) -> int:
+        graph, _ = build_graph(source)
+        return len(detect_observer(graph))
+
+    def test_subject_that_calls_its_stored_callbacks_is_detected(self) -> None:
+        for iterate in ("self._subs", "list(self._subs)", "tuple(self._subs)", "sorted(self._subs)"):
+            with self.subTest(iterate=iterate):
+                self.assertEqual(1, self.hits(f"""
+                    class Bus:
+                        def __init__(self):
+                            self._subs = []
+
+                        def subscribe(self, fn):
+                            self._subs.append(fn)
+
+                        def publish(self, data):
+                            for fn in {iterate}:
+                                fn(data)
+                """))
+
+    def test_a_dict_of_subscribers_by_topic_is_detected(self) -> None:
+        self.assertEqual(1, self.hits("""
+            class EventBus:
+                def __init__(self):
+                    self._obs = {}
+
+                def subscribe(self, topic, fn):
+                    self._obs.setdefault(topic, []).append(fn)
+
+                def notify(self, topic, data):
+                    for fn in list(self._obs.get(topic, [])):
+                        fn(data)
+        """))
+
+    def test_method_style_observers_still_work(self) -> None:
+        self.assertEqual(1, self.hits("""
+            class Subject:
+                def __init__(self):
+                    self._observers = []
+
+                def notify(self, data):
+                    for o in self._observers:
+                        o.update(data)
+        """))
+
+    def test_iterating_a_collection_without_calling_its_elements_is_not_an_observer(self) -> None:
+        sources = {
+            "solo imprime": """
+                class Log:
+                    def __init__(self):
+                        self._lines = []
+
+                    def dump(self):
+                        for line in self._lines:
+                            print(line)
+            """,
+            "pasa el elemento como argumento": """
+                class Log:
+                    def __init__(self):
+                        self._items = []
+
+                    def dump(self):
+                        for item in self._items:
+                            show(item)
+            """,
+            "itera una lista local": """
+                class Log:
+                    def dump(self, items):
+                        for fn in items:
+                            fn(1)
+            """,
+        }
+        for name, source in sources.items():
+            with self.subTest(name=name):
+                self.assertEqual(0, self.hits(source))
 
 
 if __name__ == "__main__":
