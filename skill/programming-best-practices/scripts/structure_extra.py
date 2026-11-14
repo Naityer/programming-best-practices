@@ -13,7 +13,29 @@ JS_IMPORT = re.compile(r"""(?:\bfrom\s+['"](\.{1,2}/[^'"]*)['"]|\bimport\s+['"](
 JS_EXT = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
 
 
-def find_duplicates(sources: dict[str, str], window: int) -> list[dict]:
+_STRING_LITERAL = re.compile(r"""("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`[^`]*`)""")
+_NUMBER_LITERAL = re.compile(r"\b\d+(?:\.\d+)?\b")
+
+
+def normalize_literals(text: str) -> str:
+    """Cadenas y números pasan a un marcador: dos copias que solo cambian un literal («almacen» / «proveedor», 10 / 20) quedan iguales."""
+    return _NUMBER_LITERAL.sub("N", _STRING_LITERAL.sub("S", text))
+
+
+def find_near_duplicates(sources: dict[str, str], window: int, exact: list[dict]) -> list[dict]:
+    """Copia-pega con un literal cambiado: igual que `find_duplicates` pero sin distinguir cadenas ni números, y con ventana menor.
+
+    Lo que la pasada exacta ya ha informado (mismo fichero, líneas que se solapan) no se repite."""
+    items = find_duplicates(sources, window, normalize=True, rule="near-duplication", title="Bloque de ≥{span} líneas casi idéntico a {a}:{line_a} (solo cambian literales)")
+    covered: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    for item in exact:
+        covered[item["file"]].append((item["line"], item["line"] + int(item["value"]) - 1))
+    return [item for item in items
+            if not any(start <= item["line"] + int(item["value"]) - 1 and item["line"] <= end for start, end in covered.get(item["file"], []))]
+
+
+def find_duplicates(sources: dict[str, str], window: int, *, normalize: bool = False, rule: str = "duplication",
+                    title: str = "Bloque de ≥{span} líneas duplicado de {a}:{line_a}") -> list[dict]:
     """Bloques de `window` líneas significativas idénticas (sin espacios ni comentarios) en dos o más sitios.
 
     Las ventanas solapadas del mismo par de ficheros se fusionan en un solo hallazgo. Una línea significativa
@@ -21,7 +43,7 @@ def find_duplicates(sources: dict[str, str], window: int) -> list[dict]:
     seen: dict[str, tuple[str, int]] = {}
     pairs: dict[tuple[str, str], list[tuple[int, int]]] = defaultdict(list)
     for rel in sorted(sources):
-        sig = [(n, re.sub(r"\s+", " ", t).strip()) for n, t in enumerate(sources[rel].splitlines(), 1)
+        sig = [(n, re.sub(r"\s+", " ", normalize_literals(t) if normalize else t).strip()) for n, t in enumerate(sources[rel].splitlines(), 1)
                if len(t.strip()) >= 12 and not COMMENT.match(t)]
         for i in range(len(sig) - window + 1):
             key = hashlib.sha1("\n".join(t for _, t in sig[i:i + window]).encode()).hexdigest()
@@ -45,8 +67,8 @@ def find_duplicates(sources: dict[str, str], window: int) -> list[dict]:
         groups.append((first_a, start, end))
         for line_a, line_b, last_b in groups:
             span = last_b - line_b + window
-            items.append({"rule_id": "pbp.structure.duplication", "file": b, "line": line_b,
-                          "title": f"Bloque de ≥{span} líneas duplicado de {a}:{line_a}", "metric": "duplicated_lines",
+            items.append({"rule_id": f"pbp.structure.{rule}", "file": b, "line": line_b,
+                          "title": title.format(span=span, a=a, line_a=line_a), "metric": "duplicated_lines",
                           "value": span, "threshold": window, "name": f"{a}:{line_a}"})
     return items
 

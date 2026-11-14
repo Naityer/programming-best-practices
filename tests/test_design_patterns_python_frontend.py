@@ -404,5 +404,88 @@ class CallbackObserverTests(unittest.TestCase):
                 self.assertEqual(0, self.hits(source))
 
 
+class CrossClassCallTests(unittest.TestCase):
+    """Llamadas a métodos de otra clase resueltas por tipo: son la evidencia de las oportunidades de Observer y de Facade en Python."""
+
+    PREAMBLE = """
+        class Correo:
+            def enviar(self, texto):
+                print("correo", texto)
+
+        class Sms:
+            def enviar(self, texto):
+                print("sms", texto)
+    """
+
+    def opportunities(self, source: str) -> list[str]:
+        from design_patterns.opportunities import detect_opportunities
+
+        graph, _ = build_graph(textwrap.dedent(self.PREAMBLE) + textwrap.dedent(source))
+        results, _ = detect_opportunities(graph)
+        return [result.pattern_id for result in results]
+
+    def test_a_producer_calling_two_typed_parameters_is_an_observer_opportunity(self) -> None:
+        self.assertIn("observer", self.opportunities("""
+            class Pedido:
+                def completar(self, correo: Correo, sms: Sms):
+                    correo.enviar("hecho")
+                    sms.enviar("hecho")
+        """))
+
+    def test_typed_fields_count_too(self) -> None:
+        self.assertIn("observer", self.opportunities("""
+            class Pedido:
+                def __init__(self, correo: Correo, sms: Sms):
+                    self._correo: Correo = correo
+                    self._sms: Sms = sms
+
+                def completar(self):
+                    self._correo.enviar("hecho")
+                    self._sms.enviar("hecho")
+        """))
+
+    def test_one_consumer_is_not_enough(self) -> None:
+        self.assertNotIn("observer", self.opportunities("""
+            class Pedido:
+                def completar(self, correo: Correo):
+                    correo.enviar("hecho")
+        """))
+
+    def test_without_a_type_there_is_no_evidence_of_which_class_is_called(self) -> None:
+        self.assertNotIn("observer", self.opportunities("""
+            class Pedido:
+                def completar(self, correo, sms):
+                    correo.enviar("hecho")
+                    sms.enviar("hecho")
+        """))
+
+    def test_a_method_the_class_does_not_have_is_not_a_call_into_it(self) -> None:
+        self.assertNotIn("observer", self.opportunities("""
+            class Pedido:
+                def completar(self, correo: Correo, sms: Sms):
+                    correo.no_existe("hecho")
+                    sms.tampoco("hecho")
+        """))
+
+    def test_two_classes_with_the_same_name_are_ambiguous_and_not_resolved(self) -> None:
+        self.assertNotIn("observer", self.opportunities("""
+            class Correo:
+                def otro(self): ...
+
+            class Pedido:
+                def completar(self, correo: Correo, sms: Sms):
+                    correo.enviar("hecho")
+                    sms.enviar("hecho")
+        """))
+
+    def test_calling_its_own_class_is_not_an_external_consumer(self) -> None:
+        self.assertNotIn("observer", self.opportunities("""
+            class Pedido:
+                def completar(self, otro: "Pedido", sms: Sms):
+                    otro.completar(None, None)
+                    sms.enviar("hecho")
+        """))
+
+
 if __name__ == "__main__":
     unittest.main()

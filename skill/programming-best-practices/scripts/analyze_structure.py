@@ -19,18 +19,18 @@ from pathlib import Path
 
 try:
     from analysis_core.files import project_files
-    from structure_extra import find_cycles, find_duplicates
+    from structure_extra import find_cycles, find_duplicates, find_near_duplicates
 except ModuleNotFoundError:  # ejecución desde otro directorio de trabajo
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from analysis_core.files import project_files
-    from structure_extra import find_cycles, find_duplicates
+    from structure_extra import find_cycles, find_duplicates, find_near_duplicates
 
 EXCLUDED = {
     ".git", ".venv", "venv", "env", "virtualenv", "node_modules", "bower_components", "vendor", "__pycache__",
     ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", "site-packages", "dist", "build", "out", "target",
     "coverage", "htmlcov", ".quality-audit", ".quality-audit-stats", ".next", ".turbo", ".gradle", ".m2",
 }
-DEFAULTS = {"file_lines": 600, "function_lines": 80, "complexity": 15, "parameters": 7, "nesting": 5, "methods": 20, "imports": 30, "duplicate_lines": 12}
+DEFAULTS = {"file_lines": 600, "function_lines": 80, "complexity": 15, "parameters": 7, "nesting": 5, "methods": 20, "imports": 30, "duplicate_lines": 12, "near_duplicate_lines": 9}
 JS_SUFFIXES = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
 JS_IMPORT = re.compile(r"""(?:^\s*import\s[^;'"]*?from\s+['"]([^'"]+)['"]|^\s*import\s+['"]([^'"]+)['"]|\brequire\(\s*['"]([^'"]+)['"]\s*\))""", re.M)
 JS_EMPTY_CATCH = re.compile(r"catch\s*(?:\([^)]*\))?\s*\{\s*(?://[^\n]*)?\s*\}")
@@ -210,10 +210,12 @@ def analyze(root: Path, limits: dict) -> dict:
         if lines > limits["file_lines"]:
             items.append(_item("file-size", rel, 1, f"El fichero tiene {lines} líneas", "lines", lines, limits["file_lines"]))
         items.extend(analyze_python(text, rel, limits) if suffix == ".py" else analyze_js(text, rel, limits))
-    items.extend(find_duplicates(sources, limits["duplicate_lines"]))
+    exact = find_duplicates(sources, limits["duplicate_lines"])
+    items.extend(exact)
+    items.extend(find_near_duplicates(sources, limits["near_duplicate_lines"], exact))
     items.extend(find_cycles(sources))
     limitations = [
-        "Duplicación: ventanas de líneas significativas idénticas (exacta, no semántica); ciclos: solo imports internos resolubles (Python y rutas relativas JS/TS).",
+        "Duplicación: ventanas de líneas significativas idénticas; la pasada «casi idéntico» ignora cadenas y números (no renombrados ni cambios de estructura); ciclos: solo imports internos resolubles (Python y rutas relativas JS/TS).",
         "Umbrales = disparadores de revisión configurables, no un veredicto; todo hallazgo requiere revisión semántica.",
         "JavaScript/TypeScript se mide solo a nivel de fichero (tamaño, imports, catch vacío); función/clase/complejidad solo en Python.",
     ]

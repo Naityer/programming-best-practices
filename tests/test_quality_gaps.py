@@ -12,6 +12,7 @@ import unittest
 from pathlib import Path
 
 from tests.helpers import SKILL, load_module
+from tests.semgrep_batch import AVAILABLE, scan
 
 scripts = SKILL / "scripts"
 sys.path.insert(0, str(scripts))
@@ -134,81 +135,49 @@ class WeakTestsNormalizationTests(unittest.TestCase):
             self.assertNotIn("Revisar el contexto", self.finding(rule)["recommendation"])
 
 
-@unittest.skipUnless(shutil.which("semgrep"), "semgrep no está instalado")
+CASES = {
+    "regex-for": ("caso.py", "import re\nfor line in lines:\n    p = re.compile(r'[a-z]+')\n", {"regex-compile-in-loop"}, set()),
+    "regex-while": ("caso.py", "import re\nwhile pending:\n    p = re.compile(r'[a-z]+')\n", {"regex-compile-in-loop"}, set()),
+    "regex-una-vez": ("caso.py", "import re\nP = re.compile(r'[a-z]+')\nfor line in lines:\n    P.findall(line)\n", set(), {"regex-compile-in-loop"}),
+    "regex-dinamica": ("caso.py", "import re\nfor word in words:\n    p = re.compile(word)\n", set(), {"regex-compile-in-loop"}),
+    "consulta-en-bucle": ("caso.py", "for cid in ids:\n    cursor.execute('SELECT * FROM t WHERE id = ?', (cid,))\n", {"query-in-loop"}, set()),
+    "consulta-agrupada": ("caso.py", "cursor.execute('SELECT * FROM t WHERE id IN (?, ?)', ids)\nfor fila in cursor.fetchall():\n    print(fila)\n", set(), {"query-in-loop"}),
+    "execute-ajeno": ("caso.py", "for tarea in tareas:\n    executor.execute(tarea)\n", set(), {"query-in-loop"}),
+    "readlines-open": ("caso.py", "n = len(open('a.txt').readlines())\n", {"read-whole-file-lines"}, set()),
+    "readlines-with": ("caso.py", "with open('a.txt') as f:\n    todas = f.readlines()\n", {"read-whole-file-lines"}, set()),
+    "iterar-fichero": ("caso.py", "with open('a.txt') as f:\n    for linea in f:\n        print(linea)\n", set(), {"read-whole-file-lines"}),
+}
+
+
+@unittest.skipUnless(AVAILABLE, "semgrep no está instalado")
 class PerformanceRulesTests(unittest.TestCase):
     RULES = scripts / "rules" / "semgrep.yml"
 
-    def matches(self, source: str) -> set[str]:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            (root / "caso.py").write_text(textwrap.dedent(source), encoding="utf-8")
-            done = subprocess.run(
-                ["semgrep", "scan", "--metrics=off", "--quiet", "--disable-version-check", "--json", "--config", str(self.RULES), str(root)],
-                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=180, cwd=directory, env={**os.environ, "PYTHONUTF8": "1"},
-            )
-            return {item["check_id"].rsplit(".", 1)[-1] for item in json.loads(done.stdout)["results"]}
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.found = scan(cls.RULES, {name: (file, source) for name, (file, source, _, _) in CASES.items()})
+
+    def check(self, *prefixes: str) -> None:
+        names = [name for name in CASES if name.startswith(prefixes)]
+        self.assertTrue(names, prefixes)
+        for name in names:
+            _, _, must, never = CASES[name]
+            with self.subTest(case=name):
+                self.assertTrue(must <= self.found[name], f"debía saltar {sorted(must - self.found[name])}; saltó {sorted(self.found[name])}")
+                self.assertFalse(never & self.found[name], f"no debía saltar {sorted(never & self.found[name])}")
 
     def test_the_rules_are_valid(self) -> None:
         done = subprocess.run(["semgrep", "--validate", "--config", str(self.RULES), "--metrics=off", "--quiet"], capture_output=True, text=True, timeout=120, env={**os.environ, "PYTHONUTF8": "1"})
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
 
-    def test_regex_compiled_in_a_loop(self) -> None:
-        self.assertIn("regex-compile-in-loop", self.matches("""
-            import re
-            for line in lines:
-                p = re.compile(r"[a-z]+")
-        """))
-        self.assertIn("regex-compile-in-loop", self.matches("""
-            import re
-            while pending:
-                p = re.compile(r"[a-z]+")
-        """))
+    def test_regex_compiled_in_a_loop_but_not_once_or_built_dynamically(self) -> None:
+        self.check("regex-")
 
-    def test_regex_compiled_once_or_built_dynamically_is_not_reported(self) -> None:
-        self.assertNotIn("regex-compile-in-loop", self.matches("""
-            import re
-            P = re.compile(r"[a-z]+")
-            for line in lines:
-                P.findall(line)
-        """))
-        self.assertNotIn("regex-compile-in-loop", self.matches("""
-            import re
-            for word in words:
-                p = re.compile(word)  # distinto en cada vuelta: no se puede sacar del bucle
-        """))
+    def test_a_statement_per_iteration_but_not_one_grouped_query_or_unrelated_execute(self) -> None:
+        self.check("consulta-", "execute-")
 
-    def test_a_statement_per_iteration(self) -> None:
-        self.assertIn("query-in-loop", self.matches("""
-            for cid in ids:
-                cursor.execute("SELECT * FROM t WHERE id = ?", (cid,))
-        """))
-
-    def test_one_grouped_query_and_unrelated_execute_calls_are_not_reported(self) -> None:
-        self.assertNotIn("query-in-loop", self.matches("""
-            cursor.execute("SELECT * FROM t WHERE id IN (?, ?)", ids)
-            for fila in cursor.fetchall():
-                print(fila)
-        """))
-        self.assertNotIn("query-in-loop", self.matches("""
-            for tarea in tareas:
-                executor.execute(tarea)
-        """))
-
-    def test_whole_file_into_memory(self) -> None:
-        self.assertIn("read-whole-file-lines", self.matches("""
-            n = len(open("a.txt").readlines())
-        """))
-        self.assertIn("read-whole-file-lines", self.matches("""
-            with open("a.txt") as f:
-                todas = f.readlines()
-        """))
-
-    def test_iterating_the_file_is_not_reported(self) -> None:
-        self.assertNotIn("read-whole-file-lines", self.matches("""
-            with open("a.txt") as f:
-                for linea in f:
-                    print(linea)
-        """))
+    def test_whole_file_into_memory_but_not_iterating_the_file(self) -> None:
+        self.check("readlines-", "iterar-")
 
     def test_the_findings_are_performance_findings(self) -> None:
         data = {"results": [{"check_id": "x.pbp.python.regex-compile-in-loop", "path": "a.py", "start": {"line": 3},

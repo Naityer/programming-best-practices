@@ -23,6 +23,17 @@ _NOT_PROJECT_SOURCES = {
 }
 
 
+def _ruff_has_own_config(root: Path) -> bool:
+    """¿El proyecto trae su propia configuración de ruff? Entonces manda ella y no se le añade nada."""
+    if any((root / name).is_file() for name in ("ruff.toml", ".ruff.toml")):
+        return True
+    pyproject = root / "pyproject.toml"
+    try:
+        return "[tool.ruff" in pyproject.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+
 def _has_python_sources(root: Path) -> bool:
     """¿Hay algún .py del proyecto? Se detiene en el primero y no entra en entornos virtuales ni en dependencias."""
     for _directory, directories, files in os.walk(root):
@@ -141,7 +152,9 @@ def _python_checks(root: Path, inv: dict[str, Any], profile: str) -> list[dict[s
     # se reportaría como una avería de la herramienta, no como «aquí no hay nada que comprobar».
     has_python_sources = _has_python_sources(root)
     ruff = _tool(inv, "ruff") if has_python_sources else None
-    checks.append(_check("python.ruff", "ruff", "maintainability", [ruff, "check", "--no-cache", "--output-format", "json", "."] if ruff else None,
+    # Sin configuración propia, ruff usa su conjunto por defecto, que NO incluye comparar con None/True usando `==` (E711, E712): se añaden.
+    ruff_extra = [] if _ruff_has_own_config(root) else ["--extend-select", "E711,E712"]
+    checks.append(_check("python.ruff", "ruff", "maintainability", [ruff, "check", "--no-cache", "--output-format", "json", *ruff_extra, "."] if ruff else None,
                          ecosystem="python", output_format="ruff-json",
                          reason="Ruff is unavailable." if has_python_sources else "No Python source files."))
     for type_tool in ("mypy", "pyright"):

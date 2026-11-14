@@ -138,3 +138,143 @@ rules:
           - metavariable-regex:
               metavariable: $F
               regex: ^(f|fh|fp|file|infile|in_file|handle|archivo|fichero)$
+
+  - id: pbp.python.assert-for-validation
+    languages: [python]
+    severity: INFO
+    message: "`assert` is stripped when Python runs with -O, so it must not validate inputs or enforce conditions that matter in production."
+    metadata:
+      category: correctness
+      confidence: LOW
+      impact: With optimizations enabled the check disappears silently and invalid data flows through.
+      fix: Raise an explicit exception (ValueError, TypeError…) for input and state validation; keep `assert` for internal invariants and tests.
+      technology: [python]
+    paths:
+      exclude: ["test_*.py", "*_test.py", "tests/", "test/", "conftest.py"]
+    pattern-either:
+      - pattern: assert $COND
+      - pattern: assert $COND, $MSG
+
+  - id: pbp.python.modify-collection-while-iterating
+    languages: [python]
+    severity: WARNING
+    message: "The collection being iterated is modified inside the loop."
+    metadata:
+      category: correctness
+      confidence: MEDIUM
+      impact: Removing or adding items while iterating skips elements or raises "changed size during iteration".
+      fix: Iterate over a copy (`for x in list(items):`) or build the new collection and replace the old one afterwards.
+      technology: [python]
+    patterns:
+      - pattern-inside: |
+          for $X in $D:
+            ...
+      - pattern-either:
+          - pattern: del $D[...]
+          - pattern: $D.remove(...)
+          - pattern: $D.pop(...)
+          - pattern: $D.append(...)
+          - pattern: $D.insert(...)
+          - pattern: $D.clear()
+          - pattern: $D.extend(...)
+
+  - id: pbp.javascript.loose-equality
+    languages: [javascript, typescript]
+    severity: INFO
+    message: "Loose equality (==, !=) applies implicit type coercion."
+    metadata:
+      category: correctness
+      confidence: MEDIUM
+      impact: Values of different types can compare as equal (0 == "", "1" == 1), which hides type errors.
+      fix: "Use strict equality (===, !==). `x == null` is accepted, since it is the idiom for null or undefined."
+      technology: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: $A == $B
+          - pattern: $A != $B
+      # Se excluye `null` por cualquier lado con metavariable-regex: un `pattern-not: null == $A` no lo excluía.
+      - metavariable-regex:
+          metavariable: $A
+          regex: ^(?!null$).*
+      - metavariable-regex:
+          metavariable: $B
+          regex: ^(?!null$).*
+  - id: pbp.javascript.parseint-without-radix
+    languages: [javascript, typescript]
+    severity: INFO
+    message: "parseInt is called without a radix."
+    metadata:
+      category: correctness
+      confidence: MEDIUM
+      impact: Without the radix the base is inferred from the text (a "0x" prefix is hexadecimal), so the result depends on the input format.
+      fix: Pass the radix explicitly, `parseInt(value, 10)`, or use `Number(value)` when the whole string must be numeric.
+      technology: [javascript, typescript]
+    pattern: parseInt($X)
+
+  - id: pbp.javascript.unreachable-code
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: "Statement after `return` or `throw`: it can never run."
+    metadata:
+      category: correctness
+      confidence: HIGH
+      impact: Dead code that looks live; usually a leftover from an edit, or a sign that the early exit is not the one intended.
+      fix: Remove the unreachable statements, or move the `return` / `throw` to where the flow really ends.
+      technology: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              return ...;
+              $STMT
+          - pattern: |
+              throw ...;
+              $STMT
+      - pattern-not: |
+          return ...;
+          function $F(...) {...}
+      - pattern-not: |
+          throw ...;
+          function $F(...) {...}
+
+  - id: pbp.javascript.async-call-not-awaited
+    languages: [javascript, typescript]
+    severity: INFO
+    message: "A call that usually returns a promise is made inside an async function without `await` and its result is discarded."
+    metadata:
+      category: correctness
+      confidence: LOW
+      impact: The function reports success before the operation finishes, and a rejection becomes an unhandled promise rejection.
+      fix: "Add `await` (or return the promise); keep it floating only when it is deliberately fire-and-forget, and attach a `.catch`."
+      technology: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern-inside: |
+              async function $F(...) {
+                ...
+              }
+          - pattern-inside: |
+              async ($...ARGS) => {
+                ...
+              }
+      - pattern: $O.$M(...)
+      - pattern-inside: |
+          $O.$M(...);
+      # El resultado se usa de alguna forma: esperado, devuelto, asignado, encadenado, pasado como argumento o dentro de un array (Promise.all).
+      - pattern-not-inside: await $O.$M(...)
+      - pattern-not-inside: return $O.$M(...)
+      - pattern-not-inside: $V = $O.$M(...)
+      - pattern-not-inside: const $V = $O.$M(...)
+      - pattern-not-inside: let $V = $O.$M(...)
+      - pattern-not-inside: var $V = $O.$M(...)
+      - pattern-not-inside: $O.$M(...).then(...)
+      - pattern-not-inside: $O.$M(...).catch(...)
+      - pattern-not-inside: void $O.$M(...)
+      - pattern-not-inside: $FN(..., $O.$M(...), ...)
+      - pattern-not-inside: "[..., $O.$M(...), ...]"
+      - metavariable-regex:
+          metavariable: $M
+          regex: ^(post|put|patch|save|insert|publish|upload)$
+      # Solo un receptor con aspecto de cliente remoto: `reply.send`, `map.delete` o `array.push` no devuelven promesas que importen.
+      - metavariable-regex:
+          metavariable: $O
+          regex: (?i)^(this\.)?(client|cliente|http|axios|api|request|fetcher|service|servicio|repo|repository|collection|bus|queue|cola)$

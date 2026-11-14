@@ -129,6 +129,7 @@ class _MethodInfo:
     returns_self: bool
     self_call_sequence: tuple[str, ...]
     delegated_calls: tuple[tuple[str, str], ...]  # (attr, method)
+    typed_calls: tuple[tuple[str, str], ...]      # (tipo anotado del parámetro, método) para `parametro.metodo(...)`
     instantiated_names: tuple[str, ...]           # bare `Name(...)` call targets
     clones_self: bool
     cache_fields: tuple[str, ...]
@@ -219,6 +220,7 @@ def _analyze_method(node: ast.FunctionDef | ast.AsyncFunctionDef, fields: dict[s
     returns_self = False
     self_call_sequence: list[str] = []
     delegated_calls: list[tuple[str, str]] = []
+    typed_calls: list[tuple[str, str]] = []
     instantiated_names: list[str] = []
     clones_self = False
     cache_fields: set[str] = set()
@@ -276,6 +278,8 @@ def _analyze_method(node: ast.FunctionDef | ast.AsyncFunctionDef, fields: dict[s
             elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Attribute) \
                     and isinstance(func.value.value, ast.Name) and func.value.value.id == "self":
                 delegated_calls.append((func.value.attr, func.attr))
+            elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) and func.value.id in param_types and func.value.id != "self":
+                typed_calls.append((param_types[func.value.id], func.attr))
             elif isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) and func.value.id == "self":
                 if func.attr == "__class__":
                     clones_self = True  # self.__class__(...) — Prototype-shaped clone
@@ -340,6 +344,7 @@ def _analyze_method(node: ast.FunctionDef | ast.AsyncFunctionDef, fields: dict[s
         returns_self=returns_self,
         self_call_sequence=tuple(self_call_sequence),
         delegated_calls=tuple(delegated_calls),
+        typed_calls=tuple(typed_calls),
         instantiated_names=tuple(instantiated_names),
         clones_self=clones_self,
         cache_fields=tuple(sorted(cache_fields)),
@@ -528,9 +533,23 @@ class PythonFrontend:
                     else:
                         unresolved_count += 1
 
+                def call_into(type_name: str, called: str) -> None:
+                    """CALLS hacia el método `called` de la clase `type_name` (si existe y se resuelve a una sola clase)."""
+                    owner_id = resolve(type_name)
+                    owner = self._classes.get(owner_id) if owner_id else None
+                    if owner is None or called not in owner.methods or owner_id == class_id:
+                        return
+                    target_method = _entity_id(owner.file, f"{owner.qualified_name}.{called}")
+                    if target_method in entity_by_id:
+                        relations.append(Relation(type="CALLS", source_id=method_id, target_id=target_method))
+
+                for type_name, called in method.typed_calls:
+                    call_into(type_name, called)
+
                 for attr, delegated_method in method.delegated_calls:
                     finfo = info.fields.get(attr)
                     if finfo and finfo.type_name:
+                        call_into(finfo.type_name, delegated_method)
                         target = resolve(finfo.type_name)
                         if target:
                             relations.append(Relation(

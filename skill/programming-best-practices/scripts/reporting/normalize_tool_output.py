@@ -700,6 +700,7 @@ _STRUCTURE_RECOMMENDATIONS = {
     "many-methods": "Revisar si la clase mezcla responsabilidades (SRP) y repartirlas por cohesión de datos.",
     "fan-out": "Revisar acoplamiento: un módulo con muchas dependencias suele hacer demasiado o conocer demasiado.",
     "duplication": "Extraer lo común solo si los dos usos cambian por la misma razón; si divergen, dejar la copia.",
+    "near-duplication": "Extraer la parte común y pasar como parámetro lo que cambia (el literal); si las dos copias van a divergir, dejarlas.",
     "import-cycle": "Romper el ciclo invirtiendo la dependencia (interfaz o parámetro) o moviendo lo compartido a un tercer módulo.",
     "swallowed-exception": "Registrar el error con contexto o propagarlo; si descartarlo es intencionado, decir por qué en un comentario.",
     "test-no-assertion": "Añadir la comprobación del resultado esperado; si es una prueba de humo (solo que no lance), decirlo en el nombre o con un comentario.",
