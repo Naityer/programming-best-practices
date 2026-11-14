@@ -74,12 +74,56 @@ def _swallowed(handler: ast.ExceptHandler) -> bool:
     return all(isinstance(s, (ast.Pass, ast.Continue)) or (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant)) for s in handler.body)
 
 
+TEST_FILE = re.compile(r"(^|/)(test_[^/]*|[^/]*_test)\.py$|(^|/)tests?/[^/]*\.py$")
+# Llamadas que cuentan como comprobar: assert*, check*, verify*, expect*… (incluidas las de ayudantes propios) y pytest.raises/warns/fail.
+CHECKING_CALL = re.compile(r"^(assert|check|verify|expect|ensure|validate|must_|should_|fail$|raises$|warns$|approx$|deprecated_call$)", re.I)
+
+
+def _call_name(call: ast.Call) -> str:
+    function = call.func
+    return function.id if isinstance(function, ast.Name) else function.attr if isinstance(function, ast.Attribute) else ""
+
+
+def _tautology(node: ast.AST) -> bool:
+    """`assert True`, `assert 1`, `assert x == x`, `assertTrue(True)`, `assertEqual(a, a)`: pasan siempre, pase lo que pase en el código."""
+    if isinstance(node, ast.Assert):
+        test = node.test
+        if isinstance(test, ast.Constant):
+            return bool(test.value)
+        if isinstance(test, ast.Compare) and len(test.ops) == 1 and isinstance(test.ops[0], (ast.Eq, ast.Is, ast.LtE, ast.GtE)):
+            return ast.dump(test.left) == ast.dump(test.comparators[0])
+    if isinstance(node, ast.Call) and _call_name(node) in {"assertTrue", "assertEqual", "assertIs"} and node.args:
+        if _call_name(node) == "assertTrue":
+            return isinstance(node.args[0], ast.Constant) and bool(node.args[0].value)
+        return len(node.args) >= 2 and ast.dump(node.args[0]) == ast.dump(node.args[1])
+    return False
+
+
+def _weak_tests(tree: ast.AST, rel: str) -> list[dict]:
+    """Tests de Python que no pueden fallar: sin ninguna comprobación, o con comprobaciones que se cumplen siempre."""
+    if not TEST_FILE.search(rel):
+        return []
+    out = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not node.name.startswith("test"):
+            continue
+        checks = [n for n in ast.walk(node) if isinstance(n, ast.Assert) or (isinstance(n, ast.Call) and CHECKING_CALL.match(_call_name(n)))]
+        meaningful = [n for n in checks if not _tautology(n)]
+        if any(isinstance(n, ast.Raise) for n in ast.walk(node)):
+            meaningful.append(node)  # un `raise` explícito también hace fallar el test
+        if not checks:
+            out.append(_item("test-no-assertion", rel, node.lineno, f"`{node.name}` no comprueba nada: no contiene ninguna aserción", "assertions", 0, 1, node.name))
+        elif not meaningful:
+            out.append(_item("test-tautological-assertion", rel, node.lineno, f"`{node.name}` solo contiene aserciones que se cumplen siempre", "assertions", len(checks), 1, node.name))
+    return out
+
+
 def analyze_python(text: str, rel: str, limits: dict) -> list[dict]:
     try:
         tree = ast.parse(text)
     except (SyntaxError, ValueError):
         return []
-    out = []
+    out = _weak_tests(tree, rel)
     modules = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):

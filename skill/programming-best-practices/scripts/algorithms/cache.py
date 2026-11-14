@@ -11,7 +11,9 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-ENGINE_VERSION = "0.4.0"
+# Se sube con CUALQUIER cambio en lo que detectan los analizadores: la caché está en el disco del usuario y se indexa por esta versión y por el
+# contenido del fichero, así que sin subirla se seguirían sirviendo los resultados del detector anterior hasta que el fichero cambiase.
+ENGINE_VERSION = "0.5.0"
 
 
 def frontend_fingerprint(language: str) -> str:

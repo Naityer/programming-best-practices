@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,97 @@ def _location(path: Path, root: Path, node: ast.AST, tree: ast.AST, names: dict[
     return relative_location(path, root, getattr(node, "lineno", 1), containing_name(node, tree, names))
 
 
+# Qué se sabe de un nombre sin ejecutar nada: lo que dice su anotación o lo que se le asigna en su función. Sin evidencia, no se asume.
+_HASH_CALLS = {"set", "frozenset", "dict", "defaultdict", "Counter", "OrderedDict"}
+_HASH_ANNOTATION = re.compile(r"^\s*(typing\.|collections\.abc\.|collections\.)?(set|frozenset|dict|Set|FrozenSet|Dict|Mapping|MutableMapping|AbstractSet|MutableSet|DefaultDict|defaultdict|Counter|OrderedDict)\b")
+_LIST_ANNOTATION = re.compile(r"^\s*(typing\.)?(list|List|MutableSequence)\b")
+_MEMOIZERS = {"lru_cache", "cache", "memoize", "memoized", "memoise", "cached", "cached_property", "cache_result"}
+
+
+def _parents(tree: ast.AST) -> dict[ast.AST, ast.AST]:
+    return {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+
+
+def _scope_of(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> ast.AST:
+    current = parents.get(node)
+    while current is not None and not isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.Module)):
+        current = parents.get(current)
+    return current if current is not None else node
+
+
+def _parameter_annotation(scope: ast.AST, name: str) -> str | None:
+    if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        arguments = scope.args
+        for argument in [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs]:
+            if argument.arg == name and argument.annotation is not None:
+                return ast.unparse(argument.annotation)
+    return None
+
+
+def _assigned_values(scope: ast.AST, name: str) -> list[ast.AST | None]:
+    """Todo lo que se le asigna a `name` en el ámbito; None = una asignación cuyo valor no se conoce (+=, bucle…)."""
+    values: list[ast.AST | None] = []
+    for node in ast.walk(scope):
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
+            values.append(node.value)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == name:
+            values.append(node.value)
+        elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name) and node.target.id == name:
+            values.append(None)
+        elif isinstance(node, (ast.For, ast.AsyncFor)) and any(isinstance(t, ast.Name) and t.id == name for t in ast.walk(node.target)):
+            values.append(None)
+    return values
+
+
+def _is_hash_build(value: ast.AST | None) -> bool:
+    if isinstance(value, (ast.Set, ast.Dict, ast.SetComp, ast.DictComp)):
+        return True
+    if isinstance(value, ast.Call):
+        function = value.func
+        name = function.id if isinstance(function, ast.Name) else function.attr if isinstance(function, ast.Attribute) else ""
+        return name in _HASH_CALLS or name == "fromkeys"
+    return False
+
+
+def _is_list_build(value: ast.AST | None) -> bool:
+    if isinstance(value, (ast.List, ast.ListComp)):
+        return True
+    if isinstance(value, ast.BinOp) and isinstance(value.op, (ast.Mult, ast.Add)):
+        return _is_list_build(value.left) or _is_list_build(value.right)
+    if isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
+        return value.func.id in {"list", "sorted"}
+    return False
+
+
+def _known_hashed(container: ast.AST, node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
+    """¿Es `container` un conjunto o un diccionario ya construido? Entonces `x in container` es O(1), no O(n)."""
+    if not isinstance(container, ast.Name):
+        return False
+    scope = _scope_of(node, parents)
+    annotation = _parameter_annotation(scope, container.id)
+    if annotation is not None:
+        return bool(_HASH_ANNOTATION.match(annotation))
+    values = _assigned_values(scope, container.id)
+    return bool(values) and all(_is_hash_build(v) for v in values)
+
+
+def _known_list(receiver: ast.AST, node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
+    """¿Es `receiver` una lista, por su anotación o porque solo se le asignan listas en su función?"""
+    if not isinstance(receiver, ast.Name):
+        return False
+    scope = _scope_of(node, parents)
+    annotation = _parameter_annotation(scope, receiver.id)
+    if annotation is not None:
+        return bool(_LIST_ANNOTATION.match(annotation))
+    values = _assigned_values(scope, receiver.id)
+    return bool(values) and all(_is_list_build(v) for v in values)
+
+
+def _decorator_name(decorator: ast.AST) -> str:
+    target = decorator.func if isinstance(decorator, ast.Call) else decorator
+    return target.id if isinstance(target, ast.Name) else target.attr if isinstance(target, ast.Attribute) else ""
+
+
 def _safe_hash_literal(node: ast.AST) -> bool:
     if not isinstance(node, (ast.List, ast.Tuple)) or not 9 <= len(node.elts) <= 64:
         return False
@@ -48,6 +140,7 @@ def _safe_hash_literal(node: ast.AST) -> bool:
 
 def _repeated_membership(tree: ast.AST, path: Path, root: Path, names: dict[ast.AST, str]) -> list[dict[str, Any]]:
     output = []
+    parents = _parents(tree)
     loops = [node for node in ast.walk(tree) if isinstance(node, (ast.For, ast.While, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp))]
     used_names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
     index_name = "_pbp_membership_index"
@@ -58,8 +151,8 @@ def _repeated_membership(tree: ast.AST, path: Path, root: Path, names: dict[ast.
         if not containing_loops:
             continue
         container = node.comparators[0] if node.comparators else None
-        if isinstance(container, (ast.Set, ast.Dict)):
-            continue
+        if isinstance(container, (ast.Set, ast.Dict)) or _known_hashed(container, node, parents):
+            continue  # ya es un índice hash: `x in container` es O(1)
         if isinstance(container, (ast.List, ast.Tuple)) and len(container.elts) <= 8:
             continue  # Atlas §102: tiny algorithms should not trigger overengineering.
         statement_loop = next((loop for loop in reversed(containing_loops) if isinstance(loop, (ast.For, ast.While))), None)
@@ -136,6 +229,7 @@ def _quadratic_dedup(tree: ast.AST, path: Path, root: Path, names: dict[ast.AST,
 
 def _queue_pop_zero(tree: ast.AST, path: Path, root: Path, names: dict[ast.AST, str]) -> list[dict[str, Any]]:
     output = []
+    parents = _parents(tree)
     assigned_lists = {
         target.id for node in ast.walk(tree) if isinstance(node, ast.Assign) and isinstance(node.value, ast.List)
         for target in node.targets if isinstance(target, ast.Name)
@@ -144,7 +238,11 @@ def _queue_pop_zero(tree: ast.AST, path: Path, root: Path, names: dict[ast.AST, 
     for call in [node for node in ast.walk(tree) if isinstance(node, ast.Call)]:
         if not isinstance(call.func, ast.Attribute) or call.func.attr != "pop" or not isinstance(call.func.value, ast.Name):
             continue
-        if call.func.value.id not in assigned_lists or not call.args or not isinstance(call.args[0], ast.Constant) or call.args[0].value != 0:
+        if not call.args or not isinstance(call.args[0], ast.Constant) or call.args[0].value != 0:
+            continue
+        annotation = _parameter_annotation(_scope_of(call, parents), call.func.value.id)
+        # Una lista creada con un literal en el módulo, o un parámetro ANOTADO como lista: sin una de las dos, no se sabe qué tipo es.
+        if call.func.value.id not in assigned_lists and not (annotation is not None and _LIST_ANNOTATION.match(annotation)):
             continue
         if not any(_inside(call, loop) for loop in loops):
             continue
@@ -164,6 +262,8 @@ def _queue_pop_zero(tree: ast.AST, path: Path, root: Path, names: dict[ast.AST, 
 def _recursive_fibonacci(tree: ast.AST, path: Path, root: Path, names: dict[ast.AST, str]) -> list[dict[str, Any]]:
     output = []
     for fn in [node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+        if any(_decorator_name(d) in _MEMOIZERS for d in fn.decorator_list):
+            continue  # lru_cache / cache / memoize: ya está memoizada
         self_calls = [call for call in ast.walk(fn) if isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == fn.name]
         if len(self_calls) < 2:
             continue
@@ -182,6 +282,60 @@ def _recursive_fibonacci(tree: ast.AST, path: Path, root: Path, names: dict[ast.
             requirements=[_req("result depends only on the recursion key", "UNKNOWN", True, "Purity and hidden state require data-flow analysis."), _req("cache growth is bounded", "UNKNOWN", True, "Input bounds are unavailable.")],
             alternatives=[{"algorithm_id": "dynamic-programming.memoization", "eligible": False, "reason": "Purity and bounds remain UNKNOWN."}],
             recommendation=_recommend("Consider iterative dynamic programming or bounded memoization after proving purity and input bounds.", "ASSISTED", "differential-test base and random inputs", "benchmark representative n"),
+        ))
+    return output
+
+
+def _index_in_loop(tree: ast.AST, path: Path, root: Path, names: dict[ast.AST, str]) -> list[dict[str, Any]]:
+    """`lista.index(x)` dentro de un bucle: cada búsqueda recorre la lista, O(n·m). Solo si se sabe que el receptor es una lista (no un `str`)."""
+    output = []
+    parents = _parents(tree)
+    loops = [node for node in ast.walk(tree) if isinstance(node, (ast.For, ast.While, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp))]
+    for call in [node for node in ast.walk(tree) if isinstance(node, ast.Call)]:
+        if not isinstance(call.func, ast.Attribute) or call.func.attr != "index" or not call.args:
+            continue
+        if not any(_inside(call, loop) for loop in loops) or not _known_list(call.func.value, call, parents):
+            continue
+        output.append(make_occurrence(
+            algorithm_id="search.hash-lookup", rule_id="pbp.algorithm.search.repeated-linear-index",
+            family="search", status="refactor-opportunity", confidence="medium",
+            location=_location(path, root, call, tree, names), problem="locate elements by value repeatedly",
+            current_approach="list.index() inside a loop", current_time="O(n*m)", expected_time="O(n+m) average",
+            evidence=[{"kind": "ast", "description": f"{call.func.value.id} is a list and .index() is called inside a loop: every call scans it from the start."}],
+            requirements=[
+                _req("index() returns the FIRST occurrence", "UNKNOWN", True, "A value-to-position map must keep the first position when values repeat."),
+                _req("the list is not modified between lookups", "UNKNOWN", True, "Mutations would invalidate a precomputed map."),
+            ],
+            alternatives=[{"algorithm_id": "search.hash-lookup", "eligible": False, "reason": "Duplicates and mutation remain UNKNOWN."}],
+            recommendation=_recommend("Build a value-to-position dict once before the loop (keeping the first position) if the list does not change meanwhile.", "ASSISTED", "differential-test with duplicate values", "benchmark representative sizes"),
+        ))
+    return output
+
+
+def _list_rebuild(tree: ast.AST, path: Path, root: Path, names: dict[ast.AST, str]) -> list[dict[str, Any]]:
+    """`x = x + [v]` dentro de un bucle: cada vuelta copia toda la lista, O(n^2). `x.append(v)` es O(1) amortizado."""
+    output = []
+    parents = _parents(tree)
+    loops = [node for node in ast.walk(tree) if isinstance(node, (ast.For, ast.While))]
+    for node in [n for n in ast.walk(tree) if isinstance(n, ast.Assign)]:
+        if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name) or not isinstance(node.value, ast.BinOp) or not isinstance(node.value.op, ast.Add):
+            continue
+        name = node.targets[0].id
+        left, right = node.value.left, node.value.right
+        own_side, other_side = (left, right) if isinstance(left, ast.Name) and left.id == name else (right, left) if isinstance(right, ast.Name) and right.id == name else (None, None)
+        if own_side is None or not isinstance(other_side, (ast.List, ast.ListComp)):
+            continue
+        if not any(_inside(node, loop) for loop in loops) or not _known_list(own_side, node, parents):
+            continue
+        output.append(make_occurrence(
+            algorithm_id="sequences.buffered-concatenation", rule_id="pbp.algorithm.sequence.repeated-list-rebuild",
+            family="sequences", status="refactor-opportunity", confidence="high",
+            location=_location(path, root, node, tree, names), problem="grow a list while iterating",
+            current_approach="list rebuilt with + on every iteration", current_time="O(n^2)", expected_time="O(n)",
+            evidence=[{"kind": "ast", "description": f"`{name} = {name} + [...]` inside a loop copies the whole list on every iteration."}],
+            requirements=[_req("the list is not aliased elsewhere", "UNKNOWN", True, "`+` creates a new list; `append` mutates the shared one, so aliases would observe the change.")],
+            alternatives=[{"algorithm_id": "sequences.buffered-concatenation", "eligible": False, "reason": "Aliasing remains UNKNOWN."}],
+            recommendation=_recommend("Use `append`/`extend` (or a comprehension) once aliases are ruled out.", "ASSISTED", "reanalyze", "differential-test with aliased lists"),
         ))
     return output
 
@@ -244,7 +398,7 @@ def _negative_dijkstra(tree: ast.AST, path: Path, root: Path, names: dict[ast.AS
 
 
 def detect_python_misuse(tree: ast.AST, path: Path, root: Path, names: dict[ast.AST, str]) -> list[dict[str, Any]]:
-    detectors = (_repeated_membership, _quadratic_dedup, _queue_pop_zero, _recursive_fibonacci, _unsorted_bisect, _negative_dijkstra)
+    detectors = (_repeated_membership, _quadratic_dedup, _queue_pop_zero, _recursive_fibonacci, _index_in_loop, _list_rebuild, _unsorted_bisect, _negative_dijkstra)
     items = [item for detector in detectors for item in detector(tree, path, root, names)]
     specific_membership_sites = {
         (item["primary_location"]["file"], item["primary_location"]["line"])

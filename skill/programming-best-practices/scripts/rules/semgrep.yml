@@ -78,3 +78,63 @@ rules:
       - metavariable-regex:
           metavariable: $CP
           regex: ^(child_process|childProcess|child|cp|node:child_process)$
+  - id: pbp.python.regex-compile-in-loop
+    languages: [python]
+    severity: INFO
+    message: A constant regular expression is compiled on every iteration.
+    metadata:
+      category: performance
+      confidence: MEDIUM
+      impact: Re-compiling a constant pattern each pass repeats work that could be done once; the `re` module caches only a bounded number of patterns.
+      fix: Hoist `re.compile(...)` out of the loop (module level or before the loop) and reuse the compiled pattern.
+      technology: [python]
+    patterns:
+      - pattern-either:
+          - pattern-inside: |
+              for $X in $Y:
+                ...
+          - pattern-inside: |
+              while $C:
+                ...
+      - pattern: re.compile("...")
+
+  - id: pbp.python.query-in-loop
+    languages: [python]
+    severity: INFO
+    message: A database statement is executed once per iteration (possible N+1 query pattern).
+    metadata:
+      category: performance
+      confidence: LOW
+      impact: One round trip per item scales linearly with the data and usually dominates the latency of the loop.
+      fix: Fetch all the needed rows with one query (`WHERE id IN (...)`, a JOIN) or batch the writes with `executemany`; leave it as is if the loop is intentionally sequential.
+      technology: [python]
+    patterns:
+      - pattern-either:
+          - pattern-inside: |
+              for $X in $Y:
+                ...
+          - pattern-inside: |
+              while $C:
+                ...
+      - pattern: $CUR.execute(...)
+      - metavariable-regex:
+          metavariable: $CUR
+          regex: (?i)^(cur|cursor|c|conn|connection|db|session|self\.cursor|self\.conn|self\.db)$
+
+  - id: pbp.python.read-whole-file-lines
+    languages: [python]
+    severity: INFO
+    message: The whole file is loaded into memory as a list of lines.
+    metadata:
+      category: performance
+      confidence: LOW
+      impact: Memory grows with the file size; for large inputs this can exhaust memory when the lines are only consumed once.
+      fix: Iterate the file object directly (`for line in f:`) when each line is processed once and the whole list is not needed.
+      technology: [python]
+    pattern-either:
+      - pattern: open(...).readlines()
+      - patterns:
+          - pattern: $F.readlines()
+          - metavariable-regex:
+              metavariable: $F
+              regex: ^(f|fh|fp|file|infile|in_file|handle|archivo|fichero)$

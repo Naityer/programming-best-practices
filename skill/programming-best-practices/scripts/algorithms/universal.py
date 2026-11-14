@@ -124,7 +124,9 @@ def detect_indexed_behaviors(ir: dict[str, Any], root: Path) -> list[dict[str, A
     enabled = set(ir.get("operation_index", {}))
     for function in ir.get("functions", []):
         operations = function.get("operations", [])
-        if "membership" in enabled:
+        # En Python la membresía la decide `python_misuse` (sabe si el contenedor ya es un conjunto o un dict por su anotación o su asignación): la IR
+        # solo ve el nombre y marcaba también `x in conjunto`, que es O(1). El resto de lenguajes siguen por aquí.
+        if "membership" in enabled and ir.get("language") != "python":
             output.extend(
                 _repeated_membership(operation, file, root)
                 for operation in operations

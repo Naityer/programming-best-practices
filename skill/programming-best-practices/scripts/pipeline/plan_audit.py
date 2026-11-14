@@ -8,12 +8,28 @@ import json
 import subprocess
 import sys
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 from typing import Any
 
 from detect_project import detect
 
 PROFILE_RANK = {"fast": 1, "standard": 2, "deep": 3}
+
+
+_NOT_PROJECT_SOURCES = {
+    ".git", ".venv", "venv", "env", "virtualenv", "node_modules", "__pycache__", ".tox", ".mypy_cache", ".ruff_cache", ".pytest_cache",
+    "site-packages", "dist", "build", ".quality-audit",
+}
+
+
+def _has_python_sources(root: Path) -> bool:
+    """¿Hay algún .py del proyecto? Se detiene en el primero y no entra en entornos virtuales ni en dependencias."""
+    for _directory, directories, files in os.walk(root):
+        directories[:] = [name for name in directories if name not in _NOT_PROJECT_SOURCES and not name.endswith(".egg-info")]
+        if any(name.endswith(".py") for name in files):
+            return True
+    return False
 
 
 def _tool(inventory: dict[str, Any], name: str) -> str | None:
@@ -121,11 +137,15 @@ def _python_checks(root: Path, inv: dict[str, Any], profile: str) -> list[dict[s
     checks.append(_check("python.tests", "pytest", "tests", pytest_argv, ecosystem="python", required=has_tests,
                          workspace_effects="runtime", timeout=900,
                          reason="No tests detected or pytest is unavailable."))
-    ruff = _tool(inv, "ruff")
+    # Un proyecto puede tener `requirements.txt` y ni un .py (infraestructura, un front): ruff y mypy fallarían con «no hay ficheros .py» y eso
+    # se reportaría como una avería de la herramienta, no como «aquí no hay nada que comprobar».
+    has_python_sources = _has_python_sources(root)
+    ruff = _tool(inv, "ruff") if has_python_sources else None
     checks.append(_check("python.ruff", "ruff", "maintainability", [ruff, "check", "--no-cache", "--output-format", "json", "."] if ruff else None,
-                         ecosystem="python", output_format="ruff-json", reason="Ruff is unavailable."))
+                         ecosystem="python", output_format="ruff-json",
+                         reason="Ruff is unavailable." if has_python_sources else "No Python source files."))
     for type_tool in ("mypy", "pyright"):
-        executable = _tool(inv, type_tool)
+        executable = _tool(inv, type_tool) if has_python_sources else None
         if executable:
             # Si el proyecto ya declara QUÉ comprobar (`files`/`packages`/
             # `modules` en su config de mypy), se le deja mandar y no se le pasa

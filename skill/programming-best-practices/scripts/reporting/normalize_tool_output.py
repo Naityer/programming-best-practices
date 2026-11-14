@@ -170,7 +170,7 @@ def parse_semgrep(data: Any, root: Path | None) -> tuple[list[dict[str, Any]], d
             confidence = "medium"
         findings.append(_finding(
             "semgrep", rule_id, extra.get("message", "Semgrep finding"),
-            "security" if metadata.get("category") == "security" else "maintainability",
+            metadata.get("category") if metadata.get("category") in {"security", "performance", "correctness"} else "maintainability",
             severity, _relative(item.get("path"), root), item.get("start", {}).get("line"),
             extra.get("message", ""), metadata.get("impact") or "The matched construct requires contextual review before treating it as exploitable.",
             metadata.get("fix") or metadata.get("recommendation") or "Review the data flow and apply the rule-specific remediation.",
@@ -702,6 +702,8 @@ _STRUCTURE_RECOMMENDATIONS = {
     "duplication": "Extraer lo común solo si los dos usos cambian por la misma razón; si divergen, dejar la copia.",
     "import-cycle": "Romper el ciclo invirtiendo la dependencia (interfaz o parámetro) o moviendo lo compartido a un tercer módulo.",
     "swallowed-exception": "Registrar el error con contexto o propagarlo; si descartarlo es intencionado, decir por qué en un comentario.",
+    "test-no-assertion": "Añadir la comprobación del resultado esperado; si es una prueba de humo (solo que no lance), decirlo en el nombre o con un comentario.",
+    "test-tautological-assertion": "Sustituir la aserción por una comparación contra un valor esperado calculado a mano, no contra la propia expresión bajo prueba.",
 }
 
 
@@ -715,14 +717,15 @@ def parse_structure(data: Any, root: Path | None) -> tuple[list[dict[str, Any]],
         by_rule[short] = by_rule.get(short, 0) + 1
         value, threshold = item.get("value") or 0, item.get("threshold") or 0
         severe = short == "cyclomatic-complexity" and value >= 2 * threshold
+        weak_test = short.startswith("test-")
         findings.append(_finding(
-            "structure", rule, str(item.get("title") or rule), "maintainability",
-            "medium" if severe or short == "swallowed-exception" else "low",
+            "structure", rule, str(item.get("title") or rule), "tests" if weak_test else "maintainability",
+            "medium" if severe or short in {"swallowed-exception", "test-tautological-assertion"} else "low",
             str(item.get("file") or "unknown"), item.get("line"),
             f"{item.get('metric')}={value} (umbral de revisión {threshold}, configurable)",
             "Un módulo, función o clase por encima del umbral suele indicar varias responsabilidades o código difícil de probar.",
             _STRUCTURE_RECOMMENDATIONS.get(short, "Revisar el contexto antes de actuar."),
-            confidence="medium" if short == "swallowed-exception" else "low",
+            confidence="medium" if short in {"swallowed-exception", "test-tautological-assertion"} else "low",
             metric=str(item.get("metric") or ""), value=value, discriminator=item.get("name"),
         ))
     dimensions = {"structure": {"files_analyzed": data.get("files_analyzed", 0), "by_rule": by_rule}}
