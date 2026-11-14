@@ -154,3 +154,61 @@ class ProjectVirtualenvTests(unittest.TestCase):
             # Hay un Python ejecutando este test, asi que debe encontrarlo.
             self.assertEqual(entry["status"], "available")
             self.assertFalse(Path(entry["command"]).is_relative_to(root))
+
+
+class BrokenPythonShortcutTests(unittest.TestCase):
+    """El `python3.exe` de la tienda de Windows existe, `which` lo encuentra y no ejecuta nada."""
+
+    STORE_STUB = r"C:\Users\x\AppData\Local\Microsoft\WindowsApps\python3.EXE"
+    REAL = r"C:\Python312\python.exe"
+
+    def _detect_with(self, which: dict[str, str | None], runs: dict[str, bool]):
+        def fake_run(command, cwd, timeout=5):
+            ok = runs.get(command[0], True)
+            return subprocess.CompletedProcess(
+                command, 0 if ok else 9009, "Python 3.12.1\n" if ok else "",
+                "" if ok else "Python was not found; run without arguments to install from the Microsoft Store",
+            )
+
+        original = (detect_project.shutil.which, detect_project._run)
+        detect_project.shutil.which = lambda name, *a, **k: which.get(name)
+        detect_project._run = fake_run
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                return detect_project._find_tool(["python3", "python"], Path(directory))
+        finally:
+            detect_project.shutil.which, detect_project._run = original
+
+    def test_a_python3_that_does_not_run_is_skipped_for_the_next_candidate(self) -> None:
+        entry = self._detect_with({"python3": self.STORE_STUB, "python": self.REAL}, {self.STORE_STUB: False})
+        self.assertEqual(entry, {"status": "available", "command": self.REAL})
+
+    def test_a_python_that_runs_is_taken_as_before(self) -> None:
+        entry = self._detect_with({"python3": self.REAL, "python": None}, {})
+        self.assertEqual(entry["command"], self.REAL)
+
+    def test_when_no_python_on_path_runs_the_one_running_the_tool_is_used(self) -> None:
+        import sys
+
+        entry = self._detect_with({"python3": self.STORE_STUB, "python": None}, {self.STORE_STUB: False})
+        self.assertEqual(entry, {"status": "available", "command": sys.executable})
+
+    def test_other_tools_are_not_probed(self) -> None:
+        # Solo el intérprete se comprueba: ejecutar `semgrep --version` por cada herramienta encarecería la detección.
+        calls: list[list[str]] = []
+        original = (detect_project.shutil.which, detect_project._run)
+        detect_project.shutil.which = lambda name, *a, **k: r"C:\bin\ruff.exe" if name == "ruff" else None
+        detect_project._run = lambda command, cwd, timeout=5: calls.append(command)
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                entry = detect_project._find_tool(["ruff"], Path(directory))
+        finally:
+            detect_project.shutil.which, detect_project._run = original
+        self.assertEqual(entry["command"], r"C:\bin\ruff.exe")
+        self.assertEqual(calls, [])
+
+    def test_the_real_detection_gives_a_python_that_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            command = detect_project.detect(Path(directory))["tools"]["python"]["command"]
+        done = subprocess.run([command, "--version"], capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, command)

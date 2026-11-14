@@ -168,6 +168,16 @@ def _find_in_project(name: str, root: Path) -> str | None:
     return None
 
 
+_PYTHON_NAMES = frozenset({"python", "python3"})
+
+
+def _interpreter_runs(command: str) -> bool:
+    """¿Este «python» ejecuta de verdad? En Windows `python3.exe` de `WindowsApps` es un atajo de la tienda de Microsoft: existe, `which` lo
+    encuentra y al lanzarlo responde «Python was not found». Aceptarlo hacía fallar `python.compile` y `python.tests` en CUALQUIER proyecto."""
+    result = _run([command, "--version"], Path.cwd(), timeout=10)
+    return bool(result) and result.returncode == 0 and "python" in f"{result.stdout} {result.stderr}".lower()
+
+
 def _find_tool(candidates: list[str], root: Path) -> dict[str, Any]:
     # Lo que el repositorio trae consigo gana a cualquier cosa del PATH.
     for candidate in candidates:
@@ -179,8 +189,11 @@ def _find_tool(candidates: list[str], root: Path) -> dict[str, Any]:
         if local.is_file():
             return {"status": "available", "command": str(local.resolve())}
         resolved = shutil.which(candidate)
-        if resolved:
+        if resolved and (candidate not in _PYTHON_NAMES or _interpreter_runs(resolved)):
             return {"status": "available", "command": resolved}
+    if _PYTHON_NAMES.intersection(candidates):
+        # Ningún python del PATH funciona: el que está ejecutando esta herramienta sí.
+        return {"status": "available", "command": sys.executable}
     return {"status": "unavailable", "command": None}
 
 
